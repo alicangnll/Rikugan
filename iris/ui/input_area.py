@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import List, Optional
 
 from .qt_compat import (
-    QPlainTextEdit, QWidget, QVBoxLayout, QLabel, QFrame, Qt, Signal, QSizePolicy,
+    QPlainTextEdit, QWidget, QVBoxLayout, QLabel, QFrame, Qt, QSizePolicy,
 )
 
 
@@ -82,10 +82,13 @@ class InputArea(QPlainTextEdit):
     - Shift+Enter: newline
     - Escape: cancel running agent
     - /: skill autocomplete popup
+
+    Uses plain Python callbacks instead of PySide6 Signals to avoid
+    Shiboken C++ dispatch crashes (UAF in checkQtSignal on Python 3.14).
     """
 
-    submit_requested = Signal(str)
-    cancel_requested = Signal()
+    # Do NOT define Signal() here — Shiboken signal dispatch causes
+    # random SIGSEGV during emit() on Python 3.14 + PySide6 6.8.2.
 
     def __init__(self, parent: QWidget = None):
         super().__init__(parent)
@@ -97,10 +100,16 @@ class InputArea(QPlainTextEdit):
         self._enabled = True
         self._skill_slugs: List[str] = []
         self._popup: Optional[_SkillPopup] = None
-        # NOTE: Do NOT connect textChanged here.  Connecting a C++ signal
-        # to a Python slot adds Shiboken signal surface.  Instead we check
-        # the autocomplete trigger directly inside keyPressEvent after the
-        # key has been processed by the base class.
+        self._submit_callback = None  # Callable[[str], None]
+        self._cancel_callback = None  # Callable[[], None]
+
+    def set_submit_callback(self, callback) -> None:
+        """Set the callback for submit (Enter key). Callback signature: (str) -> None."""
+        self._submit_callback = callback
+
+    def set_cancel_callback(self, callback) -> None:
+        """Set the callback for cancel (Escape key). Callback signature: () -> None."""
+        self._cancel_callback = callback
 
     def set_skill_slugs(self, slugs: List[str]) -> None:
         """Set the list of available skill slugs for autocomplete."""
@@ -130,10 +139,13 @@ class InputArea(QPlainTextEdit):
             else:
                 text = self.toPlainText().strip()
                 if text and self._enabled:
-                    self.submit_requested.emit(text)
+                    # Plain Python callback — no Shiboken signal dispatch
+                    if self._submit_callback:
+                        self._submit_callback(text)
                     self.clear()
         elif event.key() == Qt.Key.Key_Escape:
-            self.cancel_requested.emit()
+            if self._cancel_callback:
+                self._cancel_callback()
         else:
             # Let the base class process the key first (inserts character),
             # then check if we need to show/update/dismiss the autocomplete.

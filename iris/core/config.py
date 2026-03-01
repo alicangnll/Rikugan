@@ -48,6 +48,7 @@ class ProviderConfig:
 @dataclass
 class IRISConfig:
     provider: ProviderConfig = field(default_factory=ProviderConfig)
+    providers: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     auto_context: bool = True
     plan_mode_default: bool = False
     checkpoint_auto_save: bool = True
@@ -73,6 +74,8 @@ class IRISConfig:
 
     def save(self) -> None:
         os.makedirs(self._config_dir, exist_ok=True)
+        # Snapshot current provider into the providers dict before saving
+        self._snapshot_current_provider()
         d = asdict(self)
         d.pop("_config_dir", None)
         with open(self.config_path, "w") as f:
@@ -87,10 +90,49 @@ class IRISConfig:
             for k, v in data["provider"].items():
                 if hasattr(self.provider, k):
                     setattr(self.provider, k, v)
+        self.providers = data.get("providers", {})
         for k in ("auto_context", "plan_mode_default",
                    "checkpoint_auto_save", "theme"):
             if k in data:
                 setattr(self, k, data[k])
+
+    def _snapshot_current_provider(self) -> None:
+        """Store current provider settings into the providers dict."""
+        name = self.provider.name
+        self.providers[name] = {
+            "model": self.provider.model,
+            "api_key": self.provider.api_key,
+            "api_base": self.provider.api_base,
+            "temperature": self.provider.temperature,
+            "max_tokens": self.provider.max_tokens,
+            "context_window": self.provider.context_window,
+        }
+
+    def switch_provider(self, new_name: str) -> None:
+        """Switch to a different provider, preserving current settings.
+
+        Saves the current provider's config and restores the new one
+        (if previously configured).
+        """
+        self._snapshot_current_provider()
+        self.provider.name = new_name
+
+        saved = self.providers.get(new_name, {})
+        if saved:
+            self.provider.model = saved.get("model", "")
+            self.provider.api_key = saved.get("api_key", "")
+            self.provider.api_base = saved.get("api_base", "")
+            self.provider.temperature = saved.get("temperature", DEFAULT_TEMPERATURE)
+            self.provider.max_tokens = saved.get("max_tokens", DEFAULT_MAX_TOKENS)
+            self.provider.context_window = saved.get("context_window", DEFAULT_CONTEXT_WINDOW)
+        else:
+            # Fresh provider — clear key/base, keep defaults
+            self.provider.api_key = ""
+            self.provider.api_base = ""
+            self.provider.model = ""
+            self.provider.temperature = DEFAULT_TEMPERATURE
+            self.provider.max_tokens = DEFAULT_MAX_TOKENS
+            self.provider.context_window = DEFAULT_CONTEXT_WINDOW
 
     @classmethod
     def load_or_create(cls) -> "IRISConfig":

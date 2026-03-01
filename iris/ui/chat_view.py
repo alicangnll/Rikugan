@@ -9,8 +9,8 @@ from .qt_compat import (
     QScrollArea, QVBoxLayout, QWidget, QSizePolicy, QTimer, Qt,
 )
 from .message_widgets import (
-    AssistantMessageWidget, ErrorMessageWidget, ToolCallWidget,
-    UserMessageWidget,
+    AssistantMessageWidget, ErrorMessageWidget, ThinkingWidget,
+    ToolCallWidget, UserMessageWidget,
 )
 from ..agent.turn import TurnEvent, TurnEventType
 from ..core.types import Message, Role
@@ -36,6 +36,7 @@ class ChatView(QScrollArea):
         # Track current assistant widget for streaming
         self._current_assistant: Optional[AssistantMessageWidget] = None
         self._tool_widgets: Dict[str, ToolCallWidget] = {}
+        self._thinking: Optional[ThinkingWidget] = None
 
     def add_user_message(self, text: str) -> None:
         widget = UserMessageWidget(text)
@@ -47,11 +48,29 @@ class ChatView(QScrollArea):
         self._insert_widget(ErrorMessageWidget(text))
         self._scroll_to_bottom()
 
+    def _show_thinking(self) -> None:
+        """Show the animated thinking indicator."""
+        if self._thinking is not None:
+            return  # already showing
+        self._thinking = ThinkingWidget()
+        self._insert_widget(self._thinking)
+        self._scroll_to_bottom()
+
+    def _hide_thinking(self) -> None:
+        """Remove the thinking indicator."""
+        if self._thinking is None:
+            return
+        self._thinking.stop()
+        self._layout.removeWidget(self._thinking)
+        self._thinking.deleteLater()
+        self._thinking = None
+
     def handle_event(self, event: TurnEvent) -> None:
         """Process a TurnEvent and update the UI accordingly."""
         etype = event.type
 
         if etype == TurnEventType.TEXT_DELTA:
+            self._hide_thinking()  # First text → stop thinking animation
             if self._current_assistant is None:
                 self._current_assistant = AssistantMessageWidget()
                 self._insert_widget(self._current_assistant)
@@ -59,11 +78,13 @@ class ChatView(QScrollArea):
             self._scroll_to_bottom()
 
         elif etype == TurnEventType.TEXT_DONE:
+            self._hide_thinking()
             if self._current_assistant is not None:
                 self._current_assistant.set_text(event.text)
             self._current_assistant = None
 
         elif etype == TurnEventType.TOOL_CALL_START:
+            self._hide_thinking()  # Tool call → stop thinking
             tw = ToolCallWidget(event.tool_name, event.tool_call_id)
             self._tool_widgets[event.tool_call_id] = tw
             self._insert_widget(tw)
@@ -87,15 +108,20 @@ class ChatView(QScrollArea):
 
         elif etype == TurnEventType.TURN_START:
             self._current_assistant = None
+            self._show_thinking()  # New turn → show thinking
+            self._scroll_to_bottom()
 
         elif etype == TurnEventType.TURN_END:
+            self._hide_thinking()
             self._current_assistant = None
 
         elif etype == TurnEventType.ERROR:
+            self._hide_thinking()
             self._insert_widget(ErrorMessageWidget(event.error or "Unknown error"))
             self._scroll_to_bottom()
 
         elif etype == TurnEventType.CANCELLED:
+            self._hide_thinking()
             self._insert_widget(ErrorMessageWidget("Cancelled by user"))
             self._scroll_to_bottom()
 
@@ -132,6 +158,7 @@ class ChatView(QScrollArea):
         self._scroll_to_bottom()
 
     def clear_chat(self) -> None:
+        self._hide_thinking()
         while self._layout.count() > 1:
             item = self._layout.takeAt(0)
             widget = item.widget()

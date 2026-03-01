@@ -190,6 +190,29 @@ class GeminiProvider(LLMProvider):
                 history.append({"role": "user", "parts": parts})
         return history
 
+    def _format_last_message(self, msg: Message):
+        """Format the last message for send_message().
+
+        Gemini's send_message() rejects empty content strings.  When the
+        last message is a TOOL result we must send function_response parts
+        instead of the (empty) ``msg.content``.
+        """
+        genai = self._get_client()
+
+        if msg.role == Role.TOOL and msg.tool_results:
+            parts = []
+            for tr in msg.tool_results:
+                parts.append(genai.protos.Part(
+                    function_response=genai.protos.FunctionResponse(
+                        name=tr.name,
+                        response={"result": tr.content},
+                    )
+                ))
+            return parts
+
+        # Regular user/assistant text — guard against empty content
+        return msg.content if msg.content else "continue"
+
     def chat(
         self, messages: List[Message],
         tools: Optional[List[Dict[str, Any]]] = None,
@@ -209,9 +232,9 @@ class GeminiProvider(LLMProvider):
         history = self._format_history(messages[:-1]) if len(messages) > 1 else []
         chat = model.start_chat(history=history)
 
-        last_msg = messages[-1].content if messages else ""
+        last_content = self._format_last_message(messages[-1]) if messages else "hello"
         try:
-            response = chat.send_message(last_msg)
+            response = chat.send_message(last_content)
         except Exception as e:
             self._handle_api_error(e)
 
@@ -261,9 +284,9 @@ class GeminiProvider(LLMProvider):
         history = self._format_history(messages[:-1]) if len(messages) > 1 else []
         chat = model.start_chat(history=history)
 
-        last_msg = messages[-1].content if messages else ""
+        last_content = self._format_last_message(messages[-1]) if messages else "hello"
         try:
-            response = chat.send_message(last_msg, stream=True)
+            response = chat.send_message(last_content, stream=True)
             for chunk in response:
                 for part in chunk.candidates[0].content.parts:
                     if hasattr(part, "text") and part.text:

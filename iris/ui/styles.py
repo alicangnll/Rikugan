@@ -39,6 +39,13 @@ QFrame#message_tool {
     margin: 2px 20px 2px 20px;
 }
 
+QFrame#message_thinking {
+    background-color: #1e1e1e;
+    border-radius: 6px;
+    padding: 4px 8px;
+    margin: 2px 8px;
+}
+
 QLabel#tool_header {
     color: #569cd6;
     font-weight: bold;

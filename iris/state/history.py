@@ -30,6 +30,7 @@ class SessionHistory:
             "created_at": session.created_at,
             "provider_name": session.provider_name,
             "model_name": session.model_name,
+            "idb_path": session.idb_path,
             "current_turn": session.current_turn,
             "metadata": session.metadata,
             "messages": [m.to_dict() for m in session.messages],
@@ -57,6 +58,7 @@ class SessionHistory:
             created_at=data.get("created_at", 0),
             provider_name=data.get("provider_name", ""),
             model_name=data.get("model_name", ""),
+            idb_path=data.get("idb_path", ""),
             current_turn=data.get("current_turn", 0),
             metadata=data.get("metadata", {}),
         )
@@ -64,8 +66,8 @@ class SessionHistory:
             session.messages.append(Message.from_dict(md))
         return session
 
-    def list_sessions(self) -> List[Dict[str, Any]]:
-        """List saved session summaries."""
+    def list_sessions(self, idb_path: str = "") -> List[Dict[str, Any]]:
+        """List saved session summaries, optionally filtered by IDB path."""
         sessions = []
         for fname in sorted(os.listdir(self._dir), reverse=True):
             if not fname.endswith(".json"):
@@ -74,22 +76,27 @@ class SessionHistory:
             try:
                 with open(path) as f:
                     data = json.load(f)
-                sessions.append({
+                entry = {
                     "id": data.get("id", fname[:-5]),
                     "created_at": data.get("created_at", 0),
                     "provider": data.get("provider_name", ""),
                     "model": data.get("model_name", ""),
+                    "idb_path": data.get("idb_path", ""),
                     "messages": len(data.get("messages", [])),
                     "description": data.get("description", ""),
-                })
+                }
+                # Filter by IDB path if specified
+                if idb_path and entry["idb_path"] and entry["idb_path"] != idb_path:
+                    continue
+                sessions.append(entry)
             except (json.JSONDecodeError, OSError) as exc:
                 log_debug(f"Skipping corrupt session file {fname}: {exc}")
                 continue
         return sessions
 
-    def get_latest_session(self) -> Optional[SessionState]:
-        """Load the most recently saved session."""
-        sessions = self.list_sessions()
+    def get_latest_session(self, idb_path: str = "") -> Optional[SessionState]:
+        """Load the most recently saved session for this IDB."""
+        sessions = self.list_sessions(idb_path=idb_path)
         if not sessions:
             return None
         sessions.sort(key=lambda s: s.get("created_at", 0), reverse=True)

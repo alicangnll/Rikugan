@@ -20,6 +20,7 @@ from .input_area import InputArea
 from .context_bar import ContextBar
 from .settings_dialog import SettingsDialog, _resolve_auth_cached
 from .session_controller import SessionController
+from .actions import IRISUIHooks
 from ..core.config import IRISConfig
 from ..core.logging import log_error, log_info, log_debug
 from ..agent.turn import TurnEvent
@@ -74,6 +75,9 @@ class IRISPanel(idaapi.PluginForm if _HAS_IDA else QWidget):
                     self._poll_timer = None
                 if hasattr(self, '_context_bar') and self._context_bar:
                     self._context_bar.stop()
+                if hasattr(self, '_ui_hooks') and self._ui_hooks:
+                    self._ui_hooks.unhook()
+                    self._ui_hooks = None
                 self._ctrl.shutdown()
                 # Detach widget tree to prevent Qt cascade deletion
                 if self._root is not None:
@@ -116,8 +120,9 @@ class IRISPanel(idaapi.PluginForm if _HAS_IDA else QWidget):
         input_layout.setContentsMargins(8, 4, 8, 4)
 
         self._input_area = InputArea()
-        self._input_area.submit_requested.connect(self._on_submit)
-        self._input_area.cancel_requested.connect(self._on_cancel)
+        # Plain Python callbacks — no Shiboken signal dispatch (avoids SIGSEGV)
+        self._input_area.set_submit_callback(self._on_submit)
+        self._input_area.set_cancel_callback(self._on_cancel)
         self._input_area.set_skill_slugs(self._ctrl.skill_slugs)
         input_layout.addWidget(self._input_area, 1)
 
@@ -162,6 +167,13 @@ class IRISPanel(idaapi.PluginForm if _HAS_IDA else QWidget):
         self._context_bar = ContextBar()
         self._context_bar.set_model(self._config.provider.model)
         layout.addWidget(self._context_bar)
+
+        # Hook IDA context menus (right-click "IRIS/" submenu)
+        if _HAS_IDA:
+            self._ui_hooks = IRISUIHooks(panel_getter=lambda: self)
+            self._ui_hooks.hook()
+        else:
+            self._ui_hooks = None
 
         self._try_restore_session()
 

@@ -42,6 +42,7 @@ class AgentLoop:
         self.skills = skill_registry
         self._cancelled = threading.Event()
         self._running = False
+        self._consecutive_errors = 0
         self._event_queue: queue.Queue[TurnEvent] = queue.Queue()
 
     @property
@@ -166,13 +167,16 @@ class AgentLoop:
             try:
                 result = self.tools.execute(tc.name, tc.arguments)
                 is_error = False
+                self._consecutive_errors = 0
             except ToolError as e:
                 result = f"Error: {e}"
                 is_error = True
+                self._consecutive_errors += 1
                 log_error(f"Tool {tc.name} error: {e}")
             except Exception as e:
                 result = f"Unexpected error: {e}"
                 is_error = True
+                self._consecutive_errors += 1
                 log_error(f"Tool {tc.name} unexpected error: {e}\n{traceback.format_exc()}")
 
             tr = ToolResult(
@@ -204,10 +208,14 @@ class AgentLoop:
             tools_schema = self.tools.to_provider_format()
             log_debug(f"Agent run started: {len(tools_schema)} tools, msg={user_message[:80]!r}")
 
+            max_turns = 100
             turn = 0
             while True:
                 self._check_cancelled()
                 turn += 1
+                if turn > max_turns:
+                    yield TurnEvent.error_event(f"Reached max turns limit ({max_turns}).")
+                    break
                 self.session.current_turn = turn
                 log_debug(f"Turn {turn} start")
                 yield TurnEvent.turn_start(turn)
@@ -256,6 +264,23 @@ class AgentLoop:
                 # Record tool results as a message
                 tool_msg = Message(role=Role.TOOL, tool_results=tool_results)
                 self.session.add_message(tool_msg)
+
+                # Consecutive error safety: inject hint at 3, stop at 5
+                if self._consecutive_errors >= 5:
+                    yield TurnEvent.error_event(
+                        "Stopped: 5 consecutive tool errors. Try a different approach."
+                    )
+                    break
+                if self._consecutive_errors >= 3:
+                    hint = Message(
+                        role=Role.USER,
+                        content=(
+                            "[SYSTEM] You have failed 3 consecutive tool calls. "
+                            "Stop retrying the same approach. Try a different strategy "
+                            "or explain what is failing."
+                        ),
+                    )
+                    self.session.add_message(hint)
 
                 log_debug(f"Turn {turn} end ({len(tool_calls)} tool calls)")
                 yield TurnEvent.turn_end(turn)

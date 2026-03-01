@@ -2,13 +2,34 @@
 
 from __future__ import annotations
 
+import random
+
 from .qt_compat import (
     QFrame, QVBoxLayout, QHBoxLayout, QLabel, QToolButton,
-    QWidget, QSizePolicy, Qt, Signal,
+    QWidget, QSizePolicy, Qt, Signal, QTimer,
 )
 
 _MAX_ARGS_DISPLAY = 2000
 _MAX_RESULT_DISPLAY = 3000
+
+_THINKING_PHRASES = [
+    "analyzing binary structure...",
+    "examining control flow...",
+    "tracing cross-references...",
+    "inspecting disassembly...",
+    "reading function signatures...",
+    "correlating data references...",
+    "mapping call graph...",
+    "evaluating type patterns...",
+    "scanning string references...",
+    "deobfuscating logic...",
+    "checking import table...",
+    "inferring variable types...",
+    "analyzing stack layout...",
+    "tracing data flow...",
+    "examining vtable references...",
+    "decoding encoded values...",
+]
 
 
 class CollapsibleSection(QFrame):
@@ -176,6 +197,57 @@ class ToolCallWidget(QFrame):
         if self._status.text() == "Running...":
             self._status.setText("Done")
             self._status.setStyleSheet("color: #4ec9b0; font-size: 10px;")
+
+
+class ThinkingWidget(QFrame):
+    """Animated thinking indicator shown while the LLM is processing.
+
+    Displays a blinking star with rotating technical phrases.
+    No Signal definitions — uses QTimer.timeout which is safe because
+    QTimer is a pre-existing Qt class (not defined during Shiboken bypass).
+    """
+
+    _STAR_FRAMES = ["✳", "✴", "✵", "✶"]
+
+    def __init__(self, parent: QWidget = None):
+        super().__init__(parent)
+        self.setObjectName("message_thinking")
+        self._phrase_idx = random.randint(0, len(_THINKING_PHRASES) - 1)
+        self._star_idx = 0
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(8, 4, 8, 4)
+        layout.setSpacing(6)
+
+        self._star_label = QLabel(self._STAR_FRAMES[0])
+        self._star_label.setStyleSheet("color: #dcdcaa; font-size: 14px;")
+        self._star_label.setFixedWidth(18)
+        layout.addWidget(self._star_label)
+
+        self._phrase_label = QLabel(_THINKING_PHRASES[self._phrase_idx])
+        self._phrase_label.setStyleSheet("color: #808080; font-style: italic; font-size: 12px;")
+        layout.addWidget(self._phrase_label, 1)
+
+        # Animate via QTimer — safe, no custom Signals
+        self._timer = QTimer(self)
+        self._timer.timeout.connect(self._tick)
+        self._timer.start(900)
+
+    def _tick(self) -> None:
+        self._star_idx = (self._star_idx + 1) % len(self._STAR_FRAMES)
+        self._star_label.setText(self._STAR_FRAMES[self._star_idx])
+
+        # Rotate phrase every ~3 ticks
+        if self._star_idx == 0:
+            self._phrase_idx = (self._phrase_idx + 1) % len(_THINKING_PHRASES)
+            self._phrase_label.setText(_THINKING_PHRASES[self._phrase_idx])
+
+    def stop(self) -> None:
+        """Stop animation. Call before removing from layout."""
+        try:
+            self._timer.stop()
+        except RuntimeError:
+            pass
 
 
 class ErrorMessageWidget(QFrame):

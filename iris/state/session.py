@@ -22,6 +22,7 @@ class SessionState:
     is_running: bool = False
     provider_name: str = ""
     model_name: str = ""
+    idb_path: str = ""
     metadata: Dict[str, str] = field(default_factory=dict)
 
     def add_message(self, msg: Message) -> None:

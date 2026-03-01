@@ -279,17 +279,16 @@ class SettingsDialog(QDialog):
     # --- Provider switching ---
 
     def _on_provider_changed(self, provider: str) -> None:
-        # Clear API key if it's a known default from another provider (e.g. "ollama")
-        current_key = self._api_key_edit.text().strip()
-        if current_key in _PROVIDER_DEFAULT_KEYS and current_key != provider:
-            self._api_key_edit.clear()
+        # Use config.switch_provider() to snapshot current & restore saved
+        self._config.switch_provider(provider)
 
-        # Clear API base if it belongs to a different provider's default
-        current_base = self._api_base_edit.text().strip()
-        for prov, default_base in _PROVIDER_BASES.items():
-            if prov != provider and current_base.startswith(default_base.rstrip("/v1").rstrip("/")):
-                self._api_base_edit.clear()
-                break
+        # Update UI fields from the (possibly restored) config
+        self._api_key_edit.setText(self._config.provider.api_key)
+        self._api_base_edit.setText(self._config.provider.api_base)
+        self._model_combo.setCurrentText(self._config.provider.model)
+        self._temp_spin.setValue(self._config.provider.temperature)
+        self._max_tokens_spin.setValue(self._config.provider.max_tokens)
+        self._context_spin.setValue(self._config.provider.context_window)
 
         # Auto-fill API base for providers that need it
         if provider == "ollama" and not self._api_base_edit.text().strip():

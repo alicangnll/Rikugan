@@ -6,6 +6,7 @@ logic testable without a running Qt event loop.
 
 from __future__ import annotations
 
+import importlib
 from typing import List, Optional
 
 from ..core.config import IRISConfig
@@ -18,6 +19,18 @@ from ..skills.registry import SkillRegistry
 from ..mcp.manager import MCPManager
 from ..state.session import SessionState
 from ..state.history import SessionHistory
+
+
+def _get_idb_path() -> str:
+    """Get the path of the currently loaded IDB/binary file."""
+    try:
+        idaapi = importlib.import_module("idaapi")
+        idb = idaapi.get_path(idaapi.PATH_TYPE_IDB)
+        if idb:
+            return idb
+        return idaapi.get_input_file_path() or ""
+    except Exception:
+        return ""
 
 
 class SessionController:
@@ -36,9 +49,11 @@ class SessionController:
         self._skill_registry.discover()
         self._mcp_manager = MCPManager()
         self._mcp_manager.load_config()
+        self._idb_path = _get_idb_path()
         self._session = SessionState(
             provider_name=config.provider.name,
             model_name=config.provider.model,
+            idb_path=self._idb_path,
         )
         self._runner: Optional[BackgroundAgentRunner] = None
         self._pending_messages: List[str] = []
@@ -141,14 +156,15 @@ class SessionController:
         self._session = SessionState(
             provider_name=self.config.provider.name,
             model_name=self.config.provider.model,
+            idb_path=self._idb_path,
         )
         log_info("Started new chat session")
 
     def restore_session(self) -> Optional[SessionState]:
-        """Restore the most recent session. Returns it if found, else None."""
+        """Restore the most recent session for this IDB. Returns it if found, else None."""
         try:
             history = SessionHistory(self.config)
-            session = history.get_latest_session()
+            session = history.get_latest_session(idb_path=self._idb_path)
             if session and session.messages:
                 log_debug(f"Restoring session {session.id} with {len(session.messages)} messages")
                 self._session = session

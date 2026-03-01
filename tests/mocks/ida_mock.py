@@ -30,6 +30,9 @@ def install_ida_mocks() -> None:
         is_16bit=lambda: False, is_32bit=lambda: False,
     )
     idaapi.get_file_type_name.return_value = "ELF"
+    idaapi.PATH_TYPE_IDB = 0
+    idaapi.get_path.return_value = "/tmp/ida_test/test.idb"
+    idaapi.get_input_file_path.return_value = "/tmp/ida_test/test.bin"
     idaapi.BWN_DISASM = 1
     idaapi.BWN_PSEUDOCODE = 2
     idaapi.PluginForm = type("PluginForm", (), {
