@@ -267,5 +267,12 @@ Uses native IL levels (`llil`, `mlil`, `hlil`). Includes `redecompile_function` 
 
 ## Conclusion
 
+If you'd asked me last year what I think about AI doing reverse engineering, I'd probably have said something like "Nah, impossible, it hallucinates, reverse engineering is not something as simple as code", but this year I completely changed my mind when I saw what was achievable. AI is not that ChatGPT from 2023 anymore, it's something completely different.
 
+For that reason I decided to invest this year in researching this topic. It's amazing what we can build with agentic coding, it's surreal how fast I'm actually learning topics that I simply "didn't have time" to study in the past.
 
+Rikugan is just one of many projects I've built in the last 3 months. Actually, Rikugan was built in its first version in 1 night! In 2 days it already supported both IDA and Binary Ninja. In 3 days, it was basically what you see here with minor tweaks.
+
+This is a work in progress, with many areas of improvement. I took care enough that this wouldn't be another AI slop, but I'm certain there are areas of improvement here. I hope you'll use it for the best. If you have bugs, suggestions, or QoL improvements, please open an issue.
+
+That's all, thanks.
