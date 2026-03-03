@@ -1,4 +1,4 @@
-"""Google Gemini provider adapter."""
+"""Google Gemini provider adapter (google-genai SDK)."""
 
 from __future__ import annotations
 
@@ -21,20 +21,21 @@ class GeminiProvider(LLMProvider):
     def __init__(self, api_key: str = "", model: str = "gemini-2.0-flash", **kwargs):
         api_key = api_key or os.environ.get("GOOGLE_API_KEY", "") or os.environ.get("GEMINI_API_KEY", "")
         super().__init__(api_key=api_key, model=model)
+        self._types = None  # google.genai.types module
 
     def _get_client(self):
         if self._client is None:
             try:
-                genai = importlib.import_module("google.generativeai")
+                genai = importlib.import_module("google.genai")
+                self._types = importlib.import_module("google.genai.types")
             except ImportError:
                 raise ProviderError(
-                    "google-generativeai package not installed. Run: pip install google-generativeai",
+                    "google-genai package not installed. Run: pip install google-genai",
                     provider="gemini",
                 )
             if not self.api_key:
                 raise AuthenticationError(provider="gemini")
-            genai.configure(api_key=self.api_key)
-            self._client = genai
+            self._client = genai.Client(api_key=self.api_key)
         return self._client
 
     @property
@@ -51,14 +52,11 @@ class GeminiProvider(LLMProvider):
 
     def _fetch_models_live(self) -> List[ModelInfo]:
         """Fetch content-generation models from the Gemini API."""
-        genai = self._get_client()
+        client = self._get_client()
         models = []
-        for m in genai.list_models():
+        for m in client.models.list():
             name = m.name
             model_id = name.replace("models/", "") if name.startswith("models/") else name
-            methods = getattr(m, "supported_generation_methods", [])
-            if "generateContent" not in methods:
-                continue
             display = getattr(m, "display_name", model_id)
             ctx = getattr(m, "input_token_limit", 1000000) or 1000000
             out = getattr(m, "output_token_limit", 8192) or 8192
@@ -88,7 +86,6 @@ class GeminiProvider(LLMProvider):
         Uses typed exception checks from google.api_core.exceptions when
         available, falling back to string matching for older SDK versions.
         """
-        # Prefer typed exception checks from google.api_core.exceptions
         try:
             gexc = importlib.import_module("google.api_core.exceptions")
             if isinstance(e, (gexc.Unauthenticated, gexc.PermissionDenied)):
@@ -102,8 +99,6 @@ class GeminiProvider(LLMProvider):
         except ImportError:
             pass
 
-        # Fallback: string matching for errors not caught above (older SDKs
-        # without google.api_core, or unexpected exception types).
         msg = str(e)
         msg_lower = msg.lower()
         if "api key" in msg_lower or "permission" in msg_lower or "unauthenticated" in msg_lower or "401" in msg:
@@ -117,135 +112,103 @@ class GeminiProvider(LLMProvider):
     def _build_tools(self, tools: List[Dict[str, Any]]) -> list:
         """Convert tool definitions to Gemini function declarations.
 
-        The Gemini protobuf API expects ``Type`` enum values (``Type.OBJECT``,
-        ``Type.STRING``, …) whereas our tool schemas use JSON Schema type
-        strings (``"object"``, ``"string"``, …).  We recursively convert
-        type strings to the ``Type`` enum before constructing declarations.
+        The new google-genai SDK accepts ``parameters_json_schema`` which
+        takes a raw JSON Schema dict directly — no type-enum conversion needed.
         """
-        genai = self._get_client()
-        Type = genai.protos.Type  # enum: STRING, NUMBER, INTEGER, BOOLEAN, ARRAY, OBJECT
-        _TYPE_MAP = {
-            "string": Type.STRING,
-            "number": Type.NUMBER,
-            "integer": Type.INTEGER,
-            "boolean": Type.BOOLEAN,
-            "array": Type.ARRAY,
-            "object": Type.OBJECT,
-        }
-
-        def _convert_schema(schema: Dict[str, Any]) -> Dict[str, Any]:
-            """Recursively convert JSON Schema type strings to Gemini Type enums."""
-            out: Dict[str, Any] = {}
-            for k, v in schema.items():
-                if k == "type" and isinstance(v, str):
-                    out[k] = _TYPE_MAP.get(v, Type.STRING)
-                elif k == "properties" and isinstance(v, dict):
-                    out[k] = {pk: _convert_schema(pv) for pk, pv in v.items()}
-                elif k == "items" and isinstance(v, dict):
-                    out[k] = _convert_schema(v)
-                else:
-                    out[k] = v
-            return out
-
+        types = self._types
         declarations = []
         for t in tools:
             func = t.get("function", t)
             params = func.get("parameters", {})
-            declarations.append(genai.protos.FunctionDeclaration(
+            declarations.append(types.FunctionDeclaration(
                 name=func["name"],
                 description=func.get("description", ""),
-                parameters=_convert_schema(params) if params else None,
+                parameters_json_schema=params if params else None,
             ))
-        return [genai.protos.Tool(function_declarations=declarations)]
+        return [types.Tool(function_declarations=declarations)]
 
-    def _format_history(self, messages: List[Message]) -> list:
-        """Convert messages to Gemini chat history.
+    def _build_contents(self, messages: List[Message]) -> list:
+        """Convert messages to a list of ``types.Content`` objects.
 
         For assistant messages that have ``_raw_parts`` (preserved from a
         previous Gemini response), replay them as-is so ``thought_signature``
-        fields are kept intact.  Gemini 3 models require these signatures
+        fields are kept intact.  Gemini 2.5+ models require these signatures
         on ``functionCall`` parts; reconstructing from our internal ToolCall
         objects would strip them.
         """
-        genai = self._get_client()
-        history = []
+        types = self._types
+        contents = []
         for msg in messages:
             if msg.role == Role.SYSTEM:
                 continue
             elif msg.role == Role.USER:
-                history.append({"role": "user", "parts": [msg.content]})
+                text = msg.content if msg.content else "continue"
+                contents.append(types.Content(
+                    role="user",
+                    parts=[types.Part.from_text(text=text)],
+                ))
             elif msg.role == Role.ASSISTANT:
                 # Prefer raw parts (preserves thought_signatures)
                 if getattr(msg, "_raw_parts", None):
-                    history.append({"role": "model", "parts": list(msg._raw_parts)})
+                    contents.append(types.Content(
+                        role="model",
+                        parts=list(msg._raw_parts),
+                    ))
                 else:
                     parts = []
                     if msg.content:
-                        parts.append(msg.content)
+                        parts.append(types.Part.from_text(text=msg.content))
                     for tc in msg.tool_calls:
-                        parts.append(genai.protos.Part(
-                            function_call=genai.protos.FunctionCall(
+                        parts.append(types.Part(
+                            function_call=types.FunctionCall(
                                 name=tc.name, args=tc.arguments,
                             )
                         ))
-                    history.append({"role": "model", "parts": parts})
+                    if parts:
+                        contents.append(types.Content(role="model", parts=parts))
             elif msg.role == Role.TOOL:
                 parts = []
                 for tr in msg.tool_results:
-                    parts.append(genai.protos.Part(
-                        function_response=genai.protos.FunctionResponse(
-                            name=tr.name,
-                            response={"result": tr.content},
-                        )
-                    ))
-                history.append({"role": "user", "parts": parts})
-        return history
-
-    def _format_last_message(self, msg: Message):
-        """Format the last message for send_message().
-
-        Gemini's send_message() rejects empty content strings.  When the
-        last message is a TOOL result we must send function_response parts
-        instead of the (empty) ``msg.content``.
-        """
-        genai = self._get_client()
-
-        if msg.role == Role.TOOL and msg.tool_results:
-            parts = []
-            for tr in msg.tool_results:
-                parts.append(genai.protos.Part(
-                    function_response=genai.protos.FunctionResponse(
+                    parts.append(types.Part.from_function_response(
                         name=tr.name,
                         response={"result": tr.content},
-                    )
-                ))
-            return parts
+                    ))
+                if parts:
+                    contents.append(types.Content(role="user", parts=parts))
+        return contents
 
-        # Regular user/assistant text — guard against empty content
-        return msg.content if msg.content else "continue"
+    def _build_config(
+        self, temperature: float, max_tokens: int, system: str,
+        tools: Optional[List[Dict[str, Any]]] = None,
+    ):
+        """Build a ``GenerateContentConfig``."""
+        types = self._types
+        kwargs: Dict[str, Any] = {
+            "temperature": temperature,
+            "max_output_tokens": max_tokens,
+        }
+        if system:
+            kwargs["system_instruction"] = system
+        if tools:
+            kwargs["tools"] = self._build_tools(tools)
+            kwargs["automatic_function_calling"] = types.AutomaticFunctionCallingConfig(disable=True)
+        return types.GenerateContentConfig(**kwargs)
 
     def chat(
         self, messages: List[Message],
         tools: Optional[List[Dict[str, Any]]] = None,
         temperature: float = 0.3, max_tokens: int = 4096, system: str = "",
     ) -> Message:
-        genai = self._get_client()
-        gen_config = genai.GenerationConfig(
-            temperature=temperature, max_output_tokens=max_tokens,
-        )
-        kwargs: Dict[str, Any] = {"generation_config": gen_config}
-        if system:
-            kwargs["system_instruction"] = system
-        if tools:
-            kwargs["tools"] = self._build_tools(tools)
+        client = self._get_client()
+        config = self._build_config(temperature, max_tokens, system, tools)
+        contents = self._build_contents(messages)
 
-        model = genai.GenerativeModel(self.model, **kwargs)
-        history = self._format_history(messages[:-1]) if len(messages) > 1 else []
-        chat = model.start_chat(history=history)
-
-        last_content = self._format_last_message(messages[-1]) if messages else "hello"
         try:
-            response = chat.send_message(last_content)
+            response = client.models.generate_content(
+                model=self.model,
+                contents=contents,
+                config=config,
+            )
         except Exception as e:
             self._handle_api_error(e)
 
@@ -256,12 +219,12 @@ class GeminiProvider(LLMProvider):
         tool_calls = []
         raw_parts = list(response.candidates[0].content.parts)
         for part in raw_parts:
-            if hasattr(part, "text") and part.text:
+            if part.text:
                 if getattr(part, "thought", False):
                     text += f"<think>{part.text}</think>\n"
                 else:
                     text += part.text
-            if hasattr(part, "function_call") and part.function_call:
+            if part.function_call:
                 fc = part.function_call
                 tool_calls.append(ToolCall(
                     id=ToolCall.make_id(),
@@ -270,7 +233,7 @@ class GeminiProvider(LLMProvider):
                 ))
 
         usage = TokenUsage()
-        if hasattr(response, "usage_metadata") and response.usage_metadata:
+        if response.usage_metadata:
             um = response.usage_metadata
             usage = TokenUsage(
                 prompt_tokens=getattr(um, "prompt_token_count", 0) or 0,
@@ -279,7 +242,6 @@ class GeminiProvider(LLMProvider):
             )
 
         msg = Message(role=Role.ASSISTANT, content=text, tool_calls=tool_calls, token_usage=usage)
-        # Preserve raw parts so thought_signatures are available for history replay
         msg._raw_parts = raw_parts
         return msg
 
@@ -288,30 +250,27 @@ class GeminiProvider(LLMProvider):
         tools: Optional[List[Dict[str, Any]]] = None,
         temperature: float = 0.3, max_tokens: int = 4096, system: str = "",
     ) -> Generator[StreamChunk, None, None]:
-        genai = self._get_client()
-        gen_config = genai.GenerationConfig(
-            temperature=temperature, max_output_tokens=max_tokens,
-        )
-        kwargs: Dict[str, Any] = {"generation_config": gen_config}
-        if system:
-            kwargs["system_instruction"] = system
-        if tools:
-            kwargs["tools"] = self._build_tools(tools)
+        client = self._get_client()
+        config = self._build_config(temperature, max_tokens, system, tools)
+        contents = self._build_contents(messages)
 
-        model = genai.GenerativeModel(self.model, **kwargs)
-        history = self._format_history(messages[:-1]) if len(messages) > 1 else []
-        chat = model.start_chat(history=history)
-
-        last_content = self._format_last_message(messages[-1]) if messages else "hello"
         try:
-            response = chat.send_message(last_content, stream=True)
             all_raw_parts: list = []
             last_usage: Optional[TokenUsage] = None
             _in_thought = False
-            for chunk in response:
-                for part in chunk.candidates[0].content.parts:
+            for chunk in client.models.generate_content_stream(
+                model=self.model,
+                contents=contents,
+                config=config,
+            ):
+                if not chunk.candidates or not chunk.candidates[0].content:
+                    continue
+                parts = chunk.candidates[0].content.parts
+                if not parts:
+                    continue
+                for part in parts:
                     all_raw_parts.append(part)
-                    if hasattr(part, "text") and part.text:
+                    if part.text:
                         is_thought = getattr(part, "thought", False)
                         if is_thought and not _in_thought:
                             yield StreamChunk(text="<think>")
@@ -320,7 +279,7 @@ class GeminiProvider(LLMProvider):
                             yield StreamChunk(text="</think>\n")
                             _in_thought = False
                         yield StreamChunk(text=part.text)
-                    if hasattr(part, "function_call") and part.function_call:
+                    if part.function_call:
                         fc = part.function_call
                         call_id = ToolCall.make_id()
                         yield StreamChunk(
@@ -334,7 +293,7 @@ class GeminiProvider(LLMProvider):
                             tool_name=fc.name,
                             is_tool_call_end=True,
                         )
-                if hasattr(chunk, "usage_metadata") and chunk.usage_metadata:
+                if chunk.usage_metadata:
                     um = chunk.usage_metadata
                     last_usage = TokenUsage(
                         prompt_tokens=getattr(um, "prompt_token_count", 0) or 0,
@@ -343,7 +302,6 @@ class GeminiProvider(LLMProvider):
                     )
             if _in_thought:
                 yield StreamChunk(text="</think>\n")
-            # Emit a final chunk carrying usage and raw parts (for thought_signature preservation)
             yield StreamChunk(
                 usage=last_usage or TokenUsage(),
                 raw_parts=all_raw_parts if all_raw_parts else None,
