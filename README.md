@@ -1,6 +1,6 @@
 # Rikugan (六眼)
 
-A reverse-engineering agent for **IDA Pro** and **Binary Ninja** that integrates a multi-provider LLM directly in your analysis UI. This project was done together with my friend, Claude Code.
+A reverse-engineering agent for **IDA Pro** and **Binary Ninja** that integrates a multi-provider LLM directly into your analysis UI. This project was built together with my friend, Claude Code.
 
 
 ![alt text](assets/binja_showcase.png)
@@ -8,62 +8,142 @@ A reverse-engineering agent for **IDA Pro** and **Binary Ninja** that integrates
 
 ![alt text](assets/ida_showcase.png)
 
+
 ## Is this another MCP client?
 
 No, Rikugan is an ***agent*** built to live inside your RE host (**IDA Pro or Binary Ninja**). It does not consume an MCP server to interact with the host database; it has its own agentic loop, context management, its own role prompt (you can check it [here](rikugan/agent/system_prompt.py)), and an in-process tool orchestration layer.
 
-The agent loop is a generator-based turn cycle: each user message kicks off a stream→execute→repeat pipeline where the LLM response is streamed token-by-token, tool calls are intercepted and dispatched.
+The agent loop is a generator-based turn cycle: each user message kicks off a stream→execute→repeat pipeline where the LLM response is streamed token-by-token and tool calls are intercepted and dispatched.
 
-The results are fed back as the next turn's context. It supports automatic error recovery, mid-run user questions, plan mode for multi-step workflows, and message queuing, all without leaving the disassembler.
+The results are fed back as the next turn's context. It supports automatic error recovery, mid-run user questions, plan mode for multi-step workflows, and message queuing — all without leaving the disassembler.
 
 The agent really ***lives*** and ***breathes*** reversing.
 
 Advantages:
 
 - No need to switch to an external MCP client such as Claude Code
-- Assistant first, not made to do your job (unless you ask it)
-- Expandable to many LLM providers and local installations (Ollama)
-- Quick enabling, just hit Ctrl+Shift+I and the chat will appear
+- Assistant-first, not designed to do your job (unless you ask it to)
+- Extensible to many LLM providers and local installations (Ollama)
+- Quick to enable — just hit Ctrl+Shift+I and the chat will appear
 
-Also, building agents is an amazing area of study, especially coding with them.
+Also, building agents is a fascinating area of study, especially when coding alongside them.
 
 
 ## Features
 
-### IDA Pro
+There are 50+ tools available to the agent, covering:
 
-| Area | Details |
-|------|---------|
-| **56 tools** | Navigation, decompiler, disassembly, xrefs, strings, annotations, type engineering, Hex-Rays microcode, scripting |
-| **9 quick actions** | Right-click context menu: explain, rename, deobfuscate, vuln audit, suggest types, annotate, clean microcode, xref analysis |
-| **Microcode tools** | Read, patch, and NOP Hex-Rays microcode; install/remove custom microcode optimizers |
+- Navigation
+- Code reading (decompiler, disassembly)
+- Cross-references
+- Strings (list, filter)
+- Annotations (retype, rename, comments)
+- IL reading/writing (Binary Ninja's LLIL/MLIL/HLIL) — Experimental
+- Scripting to extend its capabilities (Binary Ninja Python and IDAPython)
 
-### Binary Ninja
+Tool details can be found in the [ARCHITECTURE.md](ARCHITECTURE.md) document. You can use these tools to do things like:
 
-| Area | Details |
-|------|---------|
-| **56 tools** | Navigation, decompiler, disassembly, xrefs, strings, annotations, type engineering, native IL, scripting |
-| **9 quick actions** | Command palette and address-context menus: explain, rename, deobfuscate, vuln audit, suggest types, annotate, clean IL, xref analysis |
-| **IL tools** | Read, patch, and NOP LLIL/MLIL/HLIL instructions; install/remove custom IL optimizers |
+- "Explain this function"
+- "Analyze this binary and tell me what it does"
+- "Batch rename all functions in this binary"
+- "Try to deobfuscate this function"
 
-### Shared
+Depending on the complexity, the agent may invoke subagents to assist with the analysis. It will **always** ask your permission before running scripts and will never execute the target binary.
 
-| Area | Details |
-|------|---------|
-| **9 built-in skills** | Malware analysis, deobfuscation, vulnerability audit, driver analysis, CTF solving, IDA scripting, BN scripting, general RE, Linux malware |
-| **5 LLM providers** | Anthropic (Claude), OpenAI, Gemini, Ollama, OpenAI-compatible |
-| **MCP client** | Connect external MCP servers — their tools appear alongside built-in ones |
-| **Multi-tab chat** | Multiple independent conversations per file, each with its own context |
-| **Chat export** | Export any conversation to Markdown with syntax-highlighted code blocks |
-| **Script approval** | `execute_python` requires explicit user approval — code is shown with syntax highlighting before execution |
-| **Message queuing** | Send follow-up messages while the agent is working; they auto-submit when the current turn finishes |
-| **Session persistence** | Auto-save/restore conversations per file across host restarts |
-| **Host-specific prompts** | Each host gets a tailored system prompt with correct terminology |
 
+### Exploration
+
+Exploration mode is directly inspired by how code agents work, but applied to binaries instead of source code.
+
+When you trigger it, the main orchestrator first orients itself — it reads imports, exports, strings, and key functions to build a map of what the binary is doing. Then, instead of doing everything in a single context, it spawns subagents and delegates focused tasks to each one: "analyze this function", "trace this data structure", "figure out what this import cluster is doing".
+
+Subagents run in complete isolation from the parent session. They are essentially independent instances of Rikugan with a single task and zero prior knowledge. After finishing, each one reports its findings back to the orchestrator, which synthesizes everything and continues toward your goal.
+
+The result is a much deeper and faster analysis than a single agent could do alone — and it keeps the main context window clean.
+
+|![alt text](assets/subagents_example_1.png)|
+|:--:|
+|Subagents exploring functions in parallel|
+
+|![alt text](assets/subagents_example_2.png)|
+|:--:|
+|Each subagent reporting findings back to the orchestrator|
+
+|![alt text](assets/subagents_example_3.png)|
+|:--:|
+|Orchestrator synthesizing results into a plan|
+
+```mermaid
+stateDiagram-v2
+    direction LR
+
+    [*] --> EXPLORE : /modify or /explore
+
+    EXPLORE --> EXPLORE : exploration_report()\nrename_function()\nsave_memory()
+    EXPLORE --> PLAN   : phase_transition(to_phase="plan")\n[guard: ≥1 function + ≥1 high‑relevance hypothesis]
+
+    PLAN --> EXECUTE : plan synthesized\n[guard: ≥1 change defined]
+
+    note right of PLAN
+        /explore stops here —
+        read-only mode, no patching
+    end note
+
+    EXECUTE --> EXECUTE : patch → verify loop\n(read → assemble → write → redecompile)
+    EXECUTE --> SAVE    : all patches applied\n[guard: ≥1 patch recorded]
+
+    SAVE --> Done     : Save All → write to file
+    SAVE --> Rollback : Discard All → restore original bytes
+
+    Done     --> [*]
+    Rollback --> [*]
+```
+
+During exploration, it also renames functions when it has high confidence about what a function actually does.
+
+### Natural Language Patches/modding
+
+This is an feature designed to treat the entire binary as source code. The idea is, binary is code, in a certain way a project and in certain instance, it's ***text***, LLMs are great in reading text. 
+
+We know that agentic coding is excellent in reading and editing code, so why not do the same for binaries ? the `/modify` feature is exactly that, it's like code agent now can work on the compiled binary rather the project itself!
+
+`/modify make this maze game easy to me, make me pass thought the walls`
+
+![alt text](assets/modify_example_01.png)
+
+And that's it. Rikugan will start exploration mode, understand the binary's full context, and systematically apply the necessary patches to achieve your goal. Of course, this can produce issues (segfaults, crashes), but you can feed those back and it will attempt to fix them. 
+
+This is literally ***vibe modding*** (or agentic modding for the ones who has shame to use the word "vibe").
+
+
+
+|![alt text](assets/modify_example_02.png)|
+|:--:|
+|Discovered a function purpose|
+
+
+
+|![alt text](assets/modify_example_03.png)|
+|:--:|
+|Present you the modification/patch plan|
+
+Then it will proceed to the plan implementation state.
+
+![alt text](assets/modify_example_04.png)
+
+Done
+
+![alt text](assets/maze_solve.gif)
+
+### Memory
+
+Rikugan is inspired by how Claude Code maintains its memory. Every important finding during a session is saved to `RIKUGAN.md` — a running synthesis of what was discovered across analysis sessions.
+
+![alt text](assets/memory.png)
 
 ## Requirements
 
-- IDA Pro 9.0+ with Hex-Rays decompiler (recommended), or Binary Ninja (UI mode)
+- IDA Pro 9.0+ with Hex-Rays decompiler or Binary Ninja (UI mode)
 - Python 3.9+
 - At least one LLM provider
 - Windows, macOS, or Linux
@@ -123,7 +203,7 @@ Rikugan has a settings dialog to configure your model of choice. Open Rikugan �
 
 IDA Pro: press **Ctrl+Shift+I** or go to **Edit → Plugins → Rikugan**.
 
-Binary Ninja: use **Tools → Rikugan → Open Panel** or use the icon on the right
+Binary Ninja: use **Tools → Rikugan → Open Panel** or click the icon on the sidebar.
 
 ### Multi-tab chat
 
@@ -150,7 +230,7 @@ Binary Ninja exposes equivalent commands under **Tools → Rikugan** and address
 
 | Action | Description |
 |--------|-------------|
-| **Send to Rikugan** | Pre-fills input with selection (Ctrl+Shift+A in IDA) |
+| **Send to Rikugan** | Pre-fills the input with the current selection (Ctrl+Shift+A in IDA) |
 | **Explain this** | Auto-explains the current function |
 | **Rename with Rikugan** | Analyzes and renames with evidence |
 | **Deobfuscate with Rikugan** | Systematic deobfuscation |
@@ -267,12 +347,12 @@ Uses native IL levels (`llil`, `mlil`, `hlil`). Includes `redecompile_function` 
 
 ## Conclusion
 
-If you'd asked me last year what I think about AI doing reverse engineering, I'd probably have said something like "Nah, impossible, it hallucinates, reverse engineering is not something as simple as code", but this year I completely changed my mind when I saw what was achievable. AI is not that ChatGPT from 2023 anymore, it's something completely different.
+If you'd asked me last year what I thought about AI doing reverse engineering, I'd probably have said something like "Nah, impossible — it hallucinates, and reverse engineering is not something as simple as writing code." But this year I completely changed my mind when I saw what was achievable. AI is not the ChatGPT from 2023 anymore; it's something entirely different.
 
-For that reason I decided to invest this year in researching this topic. It's amazing what we can build with agentic coding, it's surreal how fast I'm actually learning topics that I simply "didn't have time" to study in the past.
+For that reason, I decided to invest this year in researching this topic. It's amazing what we can build with agentic coding — it's surreal how quickly I'm learning topics that I simply "didn't have time" to study before.
 
-Rikugan is just one of many projects I've built in the last 3 months. Actually, Rikugan was built in its first version in 1 night! In 2 days it already supported both IDA and Binary Ninja. In 3 days, it was basically what you see here with minor tweaks.
+Rikugan is just one of many projects I've built in the last three months. The first version was built in a single night. Within two days it already supported both IDA and Binary Ninja. Within three days, it was essentially what you see here, with only minor tweaks since.
 
-This is a work in progress, with many areas of improvement. I took care enough that this wouldn't be another AI slop, but I'm certain there are areas of improvement here. I hope you'll use it for the best. If you have bugs, suggestions, or QoL improvements, please open an issue.
+This is a work in progress with many areas for improvement. I took care to ensure this wouldn't be another AI slop project, but I'm certain there is still room to grow. I hope you use it for good. If you find bugs, have suggestions, or want quality-of-life improvements, please open an issue.
 
-That's all, thanks.
+That's all — thanks.
