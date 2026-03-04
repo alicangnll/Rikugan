@@ -432,6 +432,20 @@ def navigate(ea: int) -> bool:
     return ok
 
 
+def read_bytes_safe(bv: Any, ea: int, size: int) -> bytes:
+    """Read `size` bytes from `bv` at `ea`, zero-padding on short reads."""
+    data = b""
+    read = getattr(bv, "read", None)
+    if callable(read):
+        try:
+            data = bytes(read(ea, size) or b"")
+        except Exception:
+            data = b""
+    if len(data) < size:
+        data += b"\x00" * (size - len(data))
+    return data
+
+
 def py_signature_accepts(func: Any, argc: int) -> bool:
     try:
         sig = inspect.signature(func)

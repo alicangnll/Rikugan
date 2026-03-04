@@ -14,6 +14,7 @@ from .common import (
     get_instruction_text_tokens,
     iter_function_instruction_addresses,
     parse_addr_like,
+    read_bytes_safe,
     render_tokens,
     require_bv,
 )
@@ -87,15 +88,7 @@ def get_instruction_info(address: Annotated[str, "Instruction address (hex strin
     mnemonic = text.split(None, 1)[0] if text.strip() else "?"
     operands = text[len(mnemonic):].strip() if len(text) > len(mnemonic) else ""
 
-    data = b""
-    read = getattr(bv, "read", None)
-    if callable(read):
-        try:
-            data = bytes(read(ea, size) or b"")
-        except Exception:
-            data = b""
-    if len(data) < size:
-        data += b"\x00" * (size - len(data))
+    data = read_bytes_safe(bv, ea, size)
     byte_str = " ".join(f"{b:02x}" for b in data[:size])
 
     parts = [

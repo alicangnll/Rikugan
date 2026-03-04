@@ -6,6 +6,7 @@ from typing import Annotated
 
 from ...core.logging import log_debug
 from ...tools.base import tool
+from ...tools.functions import format_function_summary
 from .common import (
     get_function_at,
     get_function_end,
@@ -98,18 +99,7 @@ def get_function_info(address: Annotated[str, "Function address (hex string)"]) 
     callers = _collect_callers(func)[:10]
     callees = _collect_callees(func)[:10]
 
-    parts = [
-        f"Name: {get_function_name(func)}",
-        f"Address: 0x{start:x} \u2013 0x{end:x}",
-        f"Size: {size} bytes",
-        f"Basic blocks: {blocks}",
-        f"Instructions: {instrs}",
-    ]
-    if callers:
-        parts.append(f"Callers ({len(callers)}): {', '.join(callers)}")
-    if callees:
-        parts.append(f"Callees ({len(callees)}): {', '.join(callees)}")
-    return "\n".join(parts)
+    return format_function_summary(get_function_name(func), start, end, size, blocks, instrs, callers, callees)
 
 
 @tool(category="functions")

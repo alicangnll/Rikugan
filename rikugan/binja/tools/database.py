@@ -11,6 +11,7 @@ from .common import (
     iter_functions,
     iter_symbols,
     parse_addr_like,
+    read_bytes_safe,
     require_bv,
     symbol_address,
     symbol_name,
@@ -179,17 +180,7 @@ def read_bytes(
     if size < 0:
         size = 0
 
-    data = b""
-    read = getattr(bv, "read", None)
-    if callable(read):
-        try:
-            data = bytes(read(ea, size) or b"")
-        except Exception:
-            data = b""
-
-    if len(data) < size:
-        data += b"\x00" * (size - len(data))
-
+    data = read_bytes_safe(bv, ea, size)
     lines = []
     for off in range(0, size, 16):
         row_ea = ea + off

@@ -3,10 +3,35 @@
 from __future__ import annotations
 
 import importlib
-from typing import Annotated, Optional
+from typing import Annotated, List, Optional
 
 from ..core.logging import log_debug
 from .base import parse_addr, tool
+
+
+def format_function_summary(
+    name: str,
+    start: int,
+    end: int,
+    size: int,
+    blocks: int,
+    instrs: int,
+    callers: List[str],
+    callees: List[str],
+) -> str:
+    """Format a function info summary string (shared between IDA and BN tools)."""
+    parts = [
+        f"Name: {name}",
+        f"Address: 0x{start:x} \u2013 0x{end:x}",
+        f"Size: {size} bytes",
+        f"Basic blocks: {blocks}",
+        f"Instructions: {instrs}",
+    ]
+    if callers:
+        parts.append(f"Callers ({len(callers)}): {', '.join(callers)}")
+    if callees:
+        parts.append(f"Callees ({len(callees)}): {', '.join(callees)}")
+    return "\n".join(parts)
 
 try:
     ida_funcs = importlib.import_module("ida_funcs")
@@ -81,18 +106,7 @@ def get_function_info(address: Annotated[str, "Function address (hex string)"]) 
                 callees.append(cname)
     callees = list(set(callees))[:10]
 
-    parts = [
-        f"Name: {name}",
-        f"Address: 0x{func.start_ea:x} – 0x{func.end_ea:x}",
-        f"Size: {size} bytes",
-        f"Basic blocks: {blocks}",
-        f"Instructions: {instrs}",
-    ]
-    if callers:
-        parts.append(f"Callers ({len(callers)}): {', '.join(callers)}")
-    if callees:
-        parts.append(f"Callees ({len(callees)}): {', '.join(callees)}")
-    return "\n".join(parts)
+    return format_function_summary(name, func.start_ea, func.end_ea, size, blocks, instrs, callers, callees)
 
 
 @tool(category="functions")
