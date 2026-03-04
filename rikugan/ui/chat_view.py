@@ -23,6 +23,13 @@ from .plan_view import PlanView
 _TOOL_GROUP_MIN_CALLS = 1
 
 
+def _is_hidden_system_user_message(content: str) -> bool:
+    """Internal system hints are persisted as user messages but not shown in UI."""
+    if not content:
+        return False
+    return content.lstrip().startswith("[SYSTEM]")
+
+
 class ChatView(QScrollArea):
     """Scrollable chat area that renders TurnEvents into widgets."""
 
@@ -323,6 +330,8 @@ class ChatView(QScrollArea):
 
         for msg in messages:
             if msg.role == Role.USER:
+                if _is_hidden_system_user_message(msg.content):
+                    continue
                 self._reset_tool_run()
                 self.add_user_message(msg.content)
 
