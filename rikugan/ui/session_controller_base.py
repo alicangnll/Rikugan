@@ -246,8 +246,11 @@ class SessionControllerBase:
         self._pending_messages.append(text)
         log_debug(f"Message queued, {len(self._pending_messages)} pending")
 
-    def on_agent_finished(self) -> Optional[str]:
+    def on_agent_finished(self) -> None:
         self._runner = None
+        # Discard queued messages — context may have changed (error, cancel,
+        # model switch).  The user can re-send if still relevant.
+        self._pending_messages.clear()
 
         session = self._sessions.get(self._active_tab_id)
         if session and self.config.checkpoint_auto_save and session.messages:
@@ -257,10 +260,6 @@ class SessionControllerBase:
                 log_debug(f"Session auto-saved: {path}")
             except Exception as e:
                 log_error(f"Failed to auto-save session: {e}")
-
-        if self._pending_messages:
-            return self._pending_messages.pop(0)
-        return None
 
     def new_chat(self) -> None:
         """Reset the active tab to a fresh session."""

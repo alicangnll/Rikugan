@@ -770,16 +770,12 @@ class RikuganPanelCore(QWidget):
         if self._poll_timer:
             self._poll_timer.stop()
 
-        next_msg = self._ctrl.on_agent_finished()
-        if next_msg:
-            # Queued message ready — submit immediately without toggling
-            # input off/on. _start_agent calls _set_running(True) internally.
-            chat_view = self._active_chat_view()
-            if chat_view is not None:
-                chat_view.pop_first_queued_message()
-            self._start_agent(next_msg)
-        else:
-            self._set_running(False)
+        self._ctrl.on_agent_finished()
+        # Remove any [queued] widgets since the queue was cleared.
+        chat_view = self._active_chat_view()
+        if chat_view is not None:
+            chat_view.remove_queued_messages()
+        self._set_running(False)
 
     def _try_restore_session(self) -> None:
         restored = self._ctrl.restore_sessions()
