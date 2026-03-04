@@ -1081,9 +1081,9 @@ class AgentLoop:
         self, system_prompt: str, tools_schema: Optional[List],
     ) -> Generator[TurnEvent, None, Tuple[str, List[ToolCall], Optional[TokenUsage], Any]]:
         """Stream one LLM call, yielding events (no retry logic)."""
-        assistant_text = ""
+        assistant_text_parts: List[str] = []
         tool_calls: List[ToolCall] = []
-        current_tool_args: Dict[str, str] = {}
+        current_tool_arg_parts: Dict[str, List[str]] = {}
         current_tool_names: Dict[str, str] = {}
         last_usage: Optional[TokenUsage] = None
         raw_parts: Any = None
@@ -1158,23 +1158,23 @@ class AgentLoop:
             chunk_count += 1
 
             if chunk.text:
-                assistant_text += chunk.text
+                assistant_text_parts.append(chunk.text)
                 yield TurnEvent.text_delta(chunk.text)
 
             if chunk.is_tool_call_start and chunk.tool_call_id:
-                current_tool_args[chunk.tool_call_id] = ""
+                current_tool_arg_parts[chunk.tool_call_id] = []
                 current_tool_names[chunk.tool_call_id] = chunk.tool_name or ""
                 yield TurnEvent.tool_call_start(chunk.tool_call_id, chunk.tool_name or "")
 
             if chunk.tool_args_delta and chunk.tool_call_id:
                 if not chunk.is_tool_call_end:
-                    current_tool_args[chunk.tool_call_id] = current_tool_args.get(chunk.tool_call_id, "") + chunk.tool_args_delta
+                    current_tool_arg_parts.setdefault(chunk.tool_call_id, []).append(chunk.tool_args_delta)
                     yield TurnEvent.tool_call_args_delta(chunk.tool_call_id, chunk.tool_args_delta)
 
             if chunk.is_tool_call_end and chunk.tool_call_id:
                 tc_id = chunk.tool_call_id
                 tc_name = current_tool_names.get(tc_id, chunk.tool_name or "")
-                raw_args = current_tool_args.get(tc_id, "")
+                raw_args = "".join(current_tool_arg_parts.get(tc_id, []))
                 try:
                     args = json.loads(raw_args) if raw_args else {}
                 except json.JSONDecodeError as je:
@@ -1242,6 +1242,7 @@ class AgentLoop:
             self._context_manager.update_usage(last_usage)
             yield TurnEvent.usage_update(last_usage)
 
+        assistant_text = "".join(assistant_text_parts)
         log_debug(f"Stream done: {chunk_count} chunks, {len(assistant_text)} chars, {len(tool_calls)} tool calls")
         return (assistant_text, tool_calls, last_usage, raw_parts)
 
