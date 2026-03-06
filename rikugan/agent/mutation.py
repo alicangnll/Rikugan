@@ -101,6 +101,36 @@ def build_reverse_record(
                 description=f"Set function comment on {func}",
             )
 
+    if tool_name == "set_pseudocode_comment":
+        func_addr = args.get("func_address", "")
+        target_addr = args.get("target_address", "")
+        old_comment = pre.get("old_comment", "")
+        if old_comment:
+            return MutationRecord(
+                tool_name=tool_name,
+                arguments=args,
+                reverse_tool="set_pseudocode_comment",
+                reverse_arguments={
+                    "func_address": func_addr,
+                    "target_address": target_addr,
+                    "comment": old_comment,
+                },
+                description=f"Set pseudocode comment at {target_addr}",
+            )
+        else:
+            # Setting an empty comment effectively deletes it
+            return MutationRecord(
+                tool_name=tool_name,
+                arguments=args,
+                reverse_tool="set_pseudocode_comment",
+                reverse_arguments={
+                    "func_address": func_addr,
+                    "target_address": target_addr,
+                    "comment": "",
+                },
+                description=f"Set pseudocode comment at {target_addr}",
+            )
+
     if tool_name == "rename_data":
         address = args.get("address", "")
         old_name = pre.get("old_name", "")
@@ -183,6 +213,14 @@ def capture_pre_state(
             func = arguments.get("function_name", "")
             if func:
                 pre["old_comment"] = tool_executor("get_function_comment", {"function_name": func})
+        elif tool_name == "set_pseudocode_comment":
+            func_addr = arguments.get("func_address", "")
+            target_addr = arguments.get("target_address", "")
+            if func_addr and target_addr:
+                pre["old_comment"] = tool_executor(
+                    "get_pseudocode_comment",
+                    {"func_address": func_addr, "target_address": target_addr},
+                )
         elif tool_name == "set_function_prototype":
             target = arguments.get("name_or_address", "")
             if target:

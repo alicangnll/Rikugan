@@ -47,6 +47,8 @@ class RikuganConfig:
     checkpoint_auto_save: bool = True
     approve_mutations: bool = False  # require approval for mutating tools (rename, retype, etc.)
     exploration_turn_limit: int = 30  # max turns in exploration phase before forcing transition
+    max_retries: int = 3  # max retries on rate-limit / transient API errors
+    silent_retry_mode: bool = False  # show loading indicator instead of error messages on retry
     theme: str = "dark"
 
     _config_dir: str = field(default_factory=_default_config_dir, repr=False)
@@ -76,6 +78,8 @@ class RikuganConfig:
             errors.append(f"max_tokens must be positive, got {self.provider.max_tokens}")
         if self.provider.context_window <= 0:
             errors.append(f"context_window must be positive, got {self.provider.context_window}")
+        if not (1 <= self.max_retries <= 10):
+            errors.append(f"max_retries {self.max_retries} out of range [1, 10]")
         return errors
 
     def save(self) -> None:
@@ -87,6 +91,7 @@ class RikuganConfig:
             self.provider.temperature = max(0.0, min(2.0, self.provider.temperature))
             self.provider.max_tokens = max(1, self.provider.max_tokens)
             self.provider.context_window = max(1024, self.provider.context_window)
+            self.max_retries = max(1, min(10, self.max_retries))
 
         os.makedirs(self._config_dir, exist_ok=True)
         # Snapshot current provider into the providers dict before saving
@@ -112,7 +117,8 @@ class RikuganConfig:
         self.custom_providers = data.get("custom_providers", {})
         for k in ("auto_context", "plan_mode_default",
                    "checkpoint_auto_save", "approve_mutations",
-                   "exploration_turn_limit", "theme"):
+                   "exploration_turn_limit", "max_retries",
+                   "silent_retry_mode", "theme"):
             if k in data:
                 setattr(self, k, data[k])
 

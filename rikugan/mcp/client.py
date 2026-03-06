@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import os
+import sys
 import threading
 from typing import Any, Dict, List, Optional
 
@@ -19,6 +21,40 @@ try:
     _HAS_MCP = True
 except ImportError:
     _HAS_MCP = False
+
+
+def _unwrap_exception(exc: BaseException) -> str:
+    """Extract a human-readable message from potentially nested ExceptionGroups.
+
+    anyio's TaskGroup wraps errors in ExceptionGroup / BaseExceptionGroup,
+    hiding the actual cause behind "unhandled errors in a TaskGroup (N sub-exception)".
+    """
+    # Python 3.11+ ExceptionGroup
+    if isinstance(exc, BaseExceptionGroup):
+        parts = []
+        for sub in exc.exceptions:
+            parts.append(_unwrap_exception(sub))
+        return "; ".join(parts)
+    return str(exc)
+
+
+def _safe_errlog():
+    """Return a file-like object usable as subprocess stderr.
+
+    IDA/Binary Ninja replace ``sys.stderr`` with custom objects
+    (``IDAPythonStdOut``) that lack ``fileno()``.  ``anyio.open_process()``
+    passes ``stderr=`` directly to the OS, which requires a real fd.
+    Fall back to opening ``/dev/null`` when the host's stderr is not a
+    real file descriptor.
+    """
+    try:
+        sys.stderr.fileno()
+        return sys.stderr
+    except (AttributeError, OSError):
+        # Open /dev/null as a real file descriptor that anyio can use.
+        # We return the file object (not subprocess.DEVNULL) because the
+        # MCP SDK types errlog as TextIO.
+        return open(os.devnull, "w")  # noqa: SIM115 — closed in _async_main finally
 
 
 class MCPToolSchema:
@@ -180,11 +216,14 @@ class MCPClient:
         """Background thread: run the asyncio event loop with the MCP session."""
         try:
             asyncio.run(self._async_main())
-        except Exception as e:
+        except BaseException as e:
+            msg = _unwrap_exception(e)
             if self._running:
-                log_error(f"MCP[{self.name}]: event loop error: {e}")
+                import traceback
+                log_error(f"MCP[{self.name}]: event loop error: {msg}")
+                log_debug(f"MCP[{self.name}]: traceback:\n{traceback.format_exc()}")
             if not self._ready.is_set():
-                self._start_error = str(e)
+                self._start_error = msg
                 self._ready.set()
         finally:
             self._running = False
@@ -200,14 +239,16 @@ class MCPClient:
             env=self.config.env if self.config.env else None,
         )
 
+        errlog = _safe_errlog()
         try:
-            async with stdio_client(server_params) as (read_stream, write_stream):
+            async with stdio_client(server_params, errlog=errlog) as (read_stream, write_stream):
                 async with ClientSession(read_stream, write_stream) as session:
                     self._session = session
 
                     # Initialize handshake
                     init_result = await session.initialize()
-                    log_debug(f"MCP[{self.name}]: initialized, server: {init_result.server_info}")
+                    server_info = getattr(init_result, "server_info", None) or getattr(init_result, "serverInfo", None)
+                    log_debug(f"MCP[{self.name}]: initialized, server: {server_info}")
 
                     # Discover tools
                     tools_result = await session.list_tools()
@@ -226,9 +267,17 @@ class MCPClient:
                     # Keep the session alive until stop() is called
                     await self._shutdown_event.wait()
 
-        except Exception as e:
+        except BaseException as e:
+            msg = _unwrap_exception(e)
             if not self._ready.is_set():
-                self._start_error = str(e)
+                self._start_error = msg
                 self._ready.set()
             else:
-                log_error(f"MCP[{self.name}]: session error: {e}")
+                log_error(f"MCP[{self.name}]: session error: {msg}")
+        finally:
+            # Close the devnull fd if we opened one (not sys.stderr)
+            if errlog is not sys.stderr:
+                try:
+                    errlog.close()
+                except Exception:
+                    pass

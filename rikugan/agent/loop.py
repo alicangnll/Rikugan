@@ -1179,16 +1179,23 @@ class AgentLoop:
 
     def _stream_llm_turn(
         self, system_prompt: str, tools_schema: Optional[List],
-        max_retries: int = 3,
+        max_retries: int = 0,
     ) -> Generator[TurnEvent, None, Tuple[str, List[ToolCall], Optional[TokenUsage], Any]]:
         """Stream one LLM call, yielding events. Retries on transient errors.
 
         Returns ``(text, tool_calls, usage, raw_parts)`` where *raw_parts* is
         provider-specific opaque data (e.g. Gemini parts with thought_signatures)
         that should be stored on the :class:`Message` for faithful history replay.
+
+        *max_retries* of 0 (default) reads from ``config.max_retries``.
         """
+        if max_retries <= 0:
+            max_retries = self.config.max_retries or 3
+        silent_mode = self.config.silent_retry_mode
+
         last_error: Optional[Exception] = None
         for attempt in range(max_retries):
+            self._check_cancelled()
             try:
                 result = yield from self._stream_llm_turn_inner(system_prompt, tools_schema)
                 return result
@@ -1203,14 +1210,23 @@ class AgentLoop:
                         backoff = e.retry_after if e.retry_after > 0 else min(2 ** attempt, 10)
                     else:
                         backoff = min(2 ** attempt, 10)
-                    yield TurnEvent.error_event(
-                        f"{self._format_provider_error_for_user(e)} "
-                        f"Retrying in {backoff:.0f}s (attempt {attempt + 2}/{max_retries})."
-                    )
+                    if silent_mode:
+                        yield TurnEvent.error_event(
+                            f"\u23f3 Retrying in {backoff:.0f}s "
+                            f"(attempt {attempt + 2}/{max_retries})..."
+                        )
+                    else:
+                        yield TurnEvent.error_event(
+                            f"{self._format_provider_error_for_user(e)} "
+                            f"Retrying in {backoff:.0f}s (attempt {attempt + 2}/{max_retries})."
+                        )
                     deadline = time.monotonic() + backoff
                     while time.monotonic() < deadline:
                         self._check_cancelled()
-                        time.sleep(min(0.5, deadline - time.monotonic()))
+                        remaining = deadline - time.monotonic()
+                        if remaining <= 0:
+                            break
+                        time.sleep(min(0.5, remaining))
                 continue
 
         # All retries exhausted

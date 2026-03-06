@@ -358,6 +358,23 @@ class SettingsDialog(QDialog):
         )
         behavior_form.addRow("Exploration turn limit:", self._explore_turns_spin)
 
+        # --- Rate-limit handling ---
+        self._max_retries_spin = QSpinBox()
+        self._max_retries_spin.setRange(1, 10)
+        self._max_retries_spin.setValue(self._config.max_retries)
+        self._max_retries_spin.setToolTip(
+            "Number of retry attempts when the API returns a rate-limit or transient error."
+        )
+        behavior_form.addRow("API retry attempts:", self._max_retries_spin)
+
+        self._silent_retry_cb = QCheckBox("Show loading indicator instead of error messages during retries")
+        self._silent_retry_cb.setChecked(self._config.silent_retry_mode)
+        self._silent_retry_cb.setToolTip(
+            "When enabled, rate-limit retries show a subtle text indicator "
+            "instead of red error messages."
+        )
+        behavior_form.addRow(self._silent_retry_cb)
+
         return behavior_group
 
     # --- Show event: defer all non-widget work to here ---
@@ -636,4 +653,6 @@ class SettingsDialog(QDialog):
         self._config.auto_context = self._auto_context_cb.isChecked()
         self._config.checkpoint_auto_save = self._auto_save_cb.isChecked()
         self._config.exploration_turn_limit = self._explore_turns_spin.value()
+        self._config.max_retries = self._max_retries_spin.value()
+        self._config.silent_retry_mode = self._silent_retry_cb.isChecked()
         self.accept()
