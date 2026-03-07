@@ -50,6 +50,11 @@ class SessionHistory:
             "metadata": session.metadata,
             "messages": [m.to_dict() for m in session.messages],
         }
+        if session.subagent_logs:
+            data["subagent_logs"] = {
+                key: [m.to_dict() for m in msgs]
+                for key, msgs in session.subagent_logs.items()
+            }
         if description:
             data["description"] = description
         with open(path, "w") as f:
@@ -79,6 +84,8 @@ class SessionHistory:
         )
         for md in data.get("messages", []):
             session.messages.append(Message.from_dict(md))
+        for key, msg_dicts in data.get("subagent_logs", {}).items():
+            session.subagent_logs[key] = [Message.from_dict(md) for md in msg_dicts]
         return session
 
     def list_sessions(

@@ -12,6 +12,7 @@ from typing import Any, Callable, Dict, Optional
 from .qt_compat import (
     QVBoxLayout, QHBoxLayout, QSplitter, QWidget, QPushButton, QTimer,
     QTabWidget, QTabBar, QToolButton, Signal, QFileDialog, QMenu, QMessageBox, Qt,
+    QCheckBox, QDialog, QDialogButtonBox,
 )
 from .styles import DARK_THEME
 from .chat_view import ChatView
@@ -37,6 +38,24 @@ _CANCEL_BTN_STYLE = (
     "border-radius: 6px; padding: 4px; font-size: 11px; }"
     "QPushButton:hover { background: #3c3c3c; }"
 )
+
+_SANITIZER_TAG_RE = re.compile(
+    r'^\[The following is (?:a tool execution result|output from an EXTERNAL MCP server)'
+    r'[^\]]*\]\n?',
+    re.MULTILINE,
+)
+_SANITIZER_WRAP_RE = re.compile(
+    r'<(?:tool_result|mcp_result|binary_data|persistent_memory|skill)\b[^>]*>\n?'
+    r'|</(?:tool_result|mcp_result|binary_data|persistent_memory|skill)>\n?',
+)
+
+
+def _strip_sanitizer_tags(text: str) -> str:
+    """Remove sanitization wrappers added for the LLM from exported content."""
+    text = _SANITIZER_TAG_RE.sub('', text)
+    text = _SANITIZER_WRAP_RE.sub('', text)
+    return text.strip()
+
 
 _TOOL_LANG_MAP = {
     "execute_python": "python",
@@ -96,11 +115,35 @@ def _export_format_tool_args(tc) -> str:
 
 def _export_format_tool_result(tr) -> str:
     """Format tool result content as a markdown code block."""
-    content = tr.content
+    content = _strip_sanitizer_tags(tr.content)
     if len(content) > _TOOL_RESULT_TRUNCATE_CHARS:
         content = content[:_TOOL_RESULT_TRUNCATE_CHARS] + "\n... (truncated)"
     lang = _export_detect_lang(content, tr.name)
     return f"```{lang}\n{content}\n```"
+
+
+def _export_format_subagent_log(messages) -> str:
+    """Format a subagent's message log as a collapsible markdown section."""
+    tool_count = sum(len(m.tool_calls) for m in messages if m.role == Role.ASSISTANT)
+    parts = [
+        f"<details>\n<summary>Subagent Log ({tool_count} tool calls)</summary>\n",
+    ]
+    for msg in messages:
+        if msg.role == Role.USER:
+            parts.append(f"> **Task**: {msg.content}\n")
+        elif msg.role == Role.ASSISTANT:
+            if msg.content:
+                parts.append(f"> **Subagent**:\n> {msg.content}\n")
+            for tc in msg.tool_calls:
+                parts.append(f"> **Tool call**: `{tc.name}`\n")
+                parts.append(f"> {_export_format_tool_args(tc)}\n")
+        elif msg.role == Role.TOOL:
+            for tr in msg.tool_results:
+                status = "Error" if tr.is_error else "Result"
+                parts.append(f"> **{status}** (`{tr.name}`):\n")
+                parts.append(f"> {_export_format_tool_result(tr)}\n")
+    parts.append("</details>\n")
+    return "\n".join(parts)
 
 
 class _AddButtonTabBar(QTabBar):
@@ -445,6 +488,31 @@ class RikuganPanelCore(QWidget):
         session = self._ctrl.get_session(tab_id)
         if session is None or not session.messages:
             return
+
+        # Show export options dialog if there are subagent logs
+        include_subagents = False
+        if session.subagent_logs:
+            dlg = QDialog(self)
+            dlg.setWindowTitle("Export Options")
+            dlg.setStyleSheet(
+                "QDialog { background: #1e1e1e; }"
+                "QLabel { color: #d4d4d4; font-size: 12px; }"
+                "QCheckBox { color: #d4d4d4; font-size: 12px; }"
+            )
+            layout = QVBoxLayout(dlg)
+            cb = QCheckBox(f"Include subagent logs ({len(session.subagent_logs)} subagent runs)")
+            cb.setChecked(True)
+            layout.addWidget(cb)
+            buttons = QDialogButtonBox(
+                QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+            )
+            buttons.accepted.connect(dlg.accept)
+            buttons.rejected.connect(dlg.reject)
+            layout.addWidget(buttons)
+            if not dlg.exec():
+                return
+            include_subagents = cb.isChecked()
+
         label = self._ctrl.tab_label(tab_id).replace("/", "-").replace("\\", "-")
         default_name = f"rikugan-{label}-{time.strftime('%Y%m%d-%H%M%S')}.md"
         path, _ = QFileDialog.getSaveFileName(
@@ -454,13 +522,15 @@ class RikuganPanelCore(QWidget):
         if not path:
             return
         try:
-            self._export_session_to_file(session, path)
+            self._export_session_to_file(session, path, include_subagents=include_subagents)
             log_info(f"Exported chat to {path}")
         except Exception as e:
             log_error(f"Failed to export chat: {e}")
 
     @staticmethod
-    def _export_session_to_file(session, path: str) -> None:
+    def _export_session_to_file(
+        session, path: str, include_subagents: bool = False,
+    ) -> None:
         """Write session messages to a Markdown file."""
         lines = ["# Rikugan Chat Export\n"]
         lines.append(f"- **Model**: {session.model_name or 'unknown'}")
@@ -469,6 +539,9 @@ class RikuganPanelCore(QWidget):
             lines.append(f"- **File**: `{os.path.basename(session.idb_path)}`")
         lines.append("")
         lines.append("---\n")
+
+        subagent_logs = session.subagent_logs if include_subagents else {}
+
         for msg in session.messages:
             if msg.role == Role.USER:
                 lines.append(f"## You\n\n{msg.content}\n")
@@ -485,6 +558,21 @@ class RikuganPanelCore(QWidget):
                     lines.append(f"**{status}** (`{tr.name}`):\n")
                     lines.append(_export_format_tool_result(tr))
                     lines.append("")
+                    # Insert subagent log after the spawn_subagent result
+                    if tr.name == "spawn_subagent" and tr.tool_call_id in subagent_logs:
+                        lines.append(
+                            _export_format_subagent_log(
+                                subagent_logs[tr.tool_call_id],
+                            )
+                        )
+
+        # Append exploration subagent logs that aren't tied to a tool_call_id
+        if include_subagents:
+            for key, msgs in subagent_logs.items():
+                if key.startswith("exploration_"):
+                    lines.append(f"\n---\n\n### Exploration Subagent Log\n")
+                    lines.append(_export_format_subagent_log(msgs))
+
         with open(path, "w", encoding="utf-8") as f:
             f.write("\n".join(lines))
 

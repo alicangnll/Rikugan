@@ -495,6 +495,11 @@ class AgentLoop:
             idb_path=self.session.idb_path or "",
         )
 
+        # Store exploration subagent messages for export
+        if runner.last_session and runner.last_session.messages:
+            log_id = f"exploration_{state.total_turns}"
+            self.session.subagent_logs[log_id] = list(runner.last_session.messages)
+
         # Merge subagent knowledge base into parent state
         state.knowledge_base = kb
         state.knowledge_base.user_goal = user_message
@@ -1617,6 +1622,9 @@ class AgentLoop:
                 raw = yield from runner.run_task(task, max_turns=max_turns)
                 content = sanitize_tool_result(raw or "(Subagent produced no output)", "spawn_subagent")
                 is_err = False
+                # Store subagent messages separately for export
+                if runner.last_session and runner.last_session.messages:
+                    self.session.subagent_logs[tc.id] = list(runner.last_session.messages)
             except Exception as e:
                 content = f"Subagent error: {e}"
                 is_err = True

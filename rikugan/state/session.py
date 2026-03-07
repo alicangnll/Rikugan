@@ -65,6 +65,9 @@ class SessionState:
     idb_path: str = ""
     db_instance_id: str = ""
     metadata: Dict[str, str] = field(default_factory=dict)
+    # Subagent message logs, keyed by the spawn_subagent tool_call_id.
+    # Stored separately from main messages to avoid burning context tokens.
+    subagent_logs: Dict[str, List[Message]] = field(default_factory=dict)
 
     def add_message(self, msg: Message) -> None:
         self.messages.append(msg)

@@ -26,6 +26,10 @@ from .plan_view import PlanView
 # only 2+ consecutive calls get grouped into a collapsible widget.
 _TOOL_GROUP_MIN_CALLS = 2
 
+# Chars to buffer before starting the typewriter reveal.
+# Keeps the initial wait short while avoiding per-token jank.
+_REVEAL_START_THRESHOLD = 150
+
 
 def _is_hidden_system_user_message(content: str) -> bool:
     """Internal system hints are persisted as user messages but not shown in UI."""
@@ -56,6 +60,7 @@ class ChatView(QScrollArea):
 
         # Track current assistant widget for streaming
         self._current_assistant: Optional[AssistantMessageWidget] = None
+        self._buffered_text: str = ""
         self._tool_widgets: Dict[str, ToolCallWidget] = {}
         self._thinking: Optional[ThinkingWidget] = None
         self._thinking_shown_at: float = 0.0
@@ -209,18 +214,38 @@ class ChatView(QScrollArea):
             self._scroll_to_bottom()
 
     def _handle_text_event(self, event: TurnEvent) -> None:
-        self._hide_thinking()
-        self._reset_tool_run()
         if event.type == TurnEventType.TEXT_DELTA:
-            if self._current_assistant is None:
-                self._current_assistant = AssistantMessageWidget()
-                self._insert_widget(self._current_assistant)
-            self._current_assistant.append_text(event.text)
-            self._scroll_to_bottom()
-        else:  # TEXT_DONE
             if self._current_assistant is not None:
-                self._current_assistant.set_text(event.text)
+                # Widget already created — feed directly
+                self._current_assistant.feed(event.text)
+            else:
+                # Accumulate until threshold, then start typewriter
+                self._buffered_text += event.text
+                if len(self._buffered_text) >= _REVEAL_START_THRESHOLD:
+                    self._hide_thinking()
+                    self._reset_tool_run()
+                    self._current_assistant = AssistantMessageWidget()
+                    self._current_assistant.content_updated.connect(self._scroll_to_bottom)
+                    self._insert_widget(self._current_assistant)
+                    self._current_assistant.feed(self._buffered_text)
+                    self._buffered_text = ""
+        else:  # TEXT_DONE
+            self._hide_thinking()
+            self._reset_tool_run()
+            if self._current_assistant is not None:
+                # Feed remaining buffer and let reveal drain to final text
+                if self._buffered_text:
+                    self._current_assistant.feed(self._buffered_text)
+                    self._buffered_text = ""
+                self._current_assistant.finish_reveal(event.text)
+            elif event.text:
+                # Short response that never hit threshold — show immediately
+                w = AssistantMessageWidget()
+                w.set_text(event.text)
+                self._insert_widget(w)
+                self._scroll_to_bottom()
             self._current_assistant = None
+            self._buffered_text = ""
 
     def _handle_tool_event(self, event: TurnEvent) -> None:
         etype = event.type

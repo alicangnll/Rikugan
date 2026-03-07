@@ -42,6 +42,12 @@ class SubagentRunner:
         self.host_name = host_name
         self.skills = skill_registry
         self._parent_loop = parent_loop
+        self._last_session: Optional[SessionState] = None
+
+    @property
+    def last_session(self) -> Optional[SessionState]:
+        """The session from the most recent subagent run."""
+        return self._last_session
 
     def run_task(
         self,
@@ -60,6 +66,7 @@ class SubagentRunner:
         from .loop import AgentLoop  # deferred to avoid circular import
 
         session = SessionState()
+        self._last_session = session
         loop = AgentLoop(
             provider=self.provider,
             tool_registry=self.tools,
@@ -119,6 +126,7 @@ class SubagentRunner:
 
         session = SessionState()
         session.idb_path = idb_path
+        self._last_session = session
 
         loop = AgentLoop(
             provider=self.provider,

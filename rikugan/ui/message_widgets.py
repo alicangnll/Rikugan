@@ -221,12 +221,20 @@ class AssistantMessageWidget(QFrame):
     """Displays an assistant message with streaming support and Markdown rendering."""
 
     _RENDER_BATCH = 40
+    _REVEAL_CHUNK = 15       # chars per tick during reveal animation
+    _REVEAL_INTERVAL = 30    # ms between ticks (~33fps)
+
+    content_updated = Signal()  # emitted on each visible render during reveal
 
     def __init__(self, parent: QWidget = None):
         super().__init__(parent)
         self.setObjectName("message_assistant")
-        self._full_text = ""
+        self._full_text = ""          # text revealed so far (visible)
+        self._reveal_buffer = ""      # text queued for typewriter reveal
         self._pending_delta = 0
+        self._reveal_timer: QTimer | None = None
+        self._finished = False        # True after finish_reveal() called
+        self._final_text = ""         # authoritative full text from TEXT_DONE
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 6, 8, 6)
@@ -260,13 +268,54 @@ class AssistantMessageWidget(QFrame):
         self._content.setText(md_to_html(visible))
         self._pending_delta = 0
 
-    def append_text(self, delta: str) -> None:
-        self._full_text += delta
-        self._pending_delta += len(delta)
+    def feed(self, text: str) -> None:
+        """Add more text to the reveal queue. Starts the timer if needed."""
+        self._reveal_buffer += text
+        if self._reveal_timer is None:
+            self._reveal_timer = QTimer(self)
+            self._reveal_timer.timeout.connect(self._reveal_tick)
+            self._reveal_timer.start(self._REVEAL_INTERVAL)
+
+    def finish_reveal(self, final_text: str) -> None:
+        """Signal that all text has been fed. Reveal drains, then snaps to final."""
+        self._finished = True
+        self._final_text = final_text
+        # If nothing left to reveal, snap immediately
+        if not self._reveal_buffer:
+            self._stop_reveal()
+            self._full_text = final_text
+            self._render()
+            self.content_updated.emit()
+
+    def _reveal_tick(self) -> None:
+        if not self._reveal_buffer:
+            if self._finished:
+                # Buffer drained and done — snap to final text
+                self._stop_reveal()
+                self._full_text = self._final_text or self._full_text
+                self._render()
+                self.content_updated.emit()
+            return
+        end = min(self._REVEAL_CHUNK, len(self._reveal_buffer))
+        chunk = self._reveal_buffer[:end]
+        self._reveal_buffer = self._reveal_buffer[end:]
+        self._full_text += chunk
+        self._pending_delta += len(chunk)
         if self._pending_delta >= self._RENDER_BATCH:
             self._render()
+            self.content_updated.emit()
+
+    def _stop_reveal(self) -> None:
+        if self._reveal_timer is not None:
+            self._reveal_timer.stop()
+            self._reveal_timer.deleteLater()
+            self._reveal_timer = None
 
     def set_text(self, text: str) -> None:
+        """Set final text immediately, stopping any reveal."""
+        self._stop_reveal()
+        self._reveal_buffer = ""
+        self._finished = True
         self._full_text = text
         self._render()
 
