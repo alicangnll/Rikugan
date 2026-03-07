@@ -425,11 +425,16 @@ class ChatView(QScrollArea):
         idx = self._layout.count() - 1
         self._layout.insertWidget(idx, widget)
 
+    def _is_near_bottom(self) -> bool:
+        """True if the user hasn't scrolled up (within ~60px of bottom)."""
+        sb = self.verticalScrollBar()
+        return sb.maximum() - sb.value() < 60
+
     def _scroll_to_bottom(self) -> None:
-        self._scroll_timer.start()
+        if self._is_near_bottom():
+            self._scroll_timer.start()
 
     def _do_scroll(self) -> None:
-        # updateGeometry is cheaper than adjustSize (avoids full re-layout)
         self._container.updateGeometry()
         sb = self.verticalScrollBar()
         sb.setValue(sb.maximum())
