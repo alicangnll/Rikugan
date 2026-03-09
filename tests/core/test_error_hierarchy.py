@@ -6,6 +6,7 @@ carry the right metadata, and error handling is consistent across providers.
 
 from __future__ import annotations
 
+import importlib.util
 import os
 import sys
 import unittest
@@ -117,6 +118,9 @@ class TestProviderErrorConsistency(unittest.TestCase):
         resp.request = MagicMock()
         return resp
 
+    @unittest.skipUnless(
+        importlib.util.find_spec("anthropic"), "anthropic SDK not installed"
+    )
     def test_anthropic_sdk_auth_error(self):
         """Anthropic maps anthropic.AuthenticationError → AuthenticationError."""
         import anthropic
@@ -127,6 +131,9 @@ class TestProviderErrorConsistency(unittest.TestCase):
         with self.assertRaises(AuthenticationError):
             p._handle_api_error(err)
 
+    @unittest.skipUnless(
+        importlib.util.find_spec("openai"), "openai SDK not installed"
+    )
     def test_openai_sdk_auth_error(self):
         """OpenAI maps openai.AuthenticationError → AuthenticationError."""
         import openai

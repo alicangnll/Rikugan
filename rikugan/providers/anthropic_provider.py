@@ -335,7 +335,10 @@ class AnthropicProvider(LLMProvider):
 
     def _handle_api_error(self, e: Exception) -> NoReturn:
         """Raise the appropriate Rikugan error from an Anthropic API error."""
-        anthropic = importlib.import_module("anthropic")
+        try:
+            anthropic = importlib.import_module("anthropic")
+        except ImportError:
+            raise ProviderError(str(e), provider="anthropic") from e
 
         if isinstance(e, anthropic.AuthenticationError):
             raise AuthenticationError(provider="anthropic") from e

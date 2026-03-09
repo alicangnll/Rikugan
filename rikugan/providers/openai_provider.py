@@ -180,7 +180,10 @@ class OpenAIProvider(LLMProvider):
         )
 
     def _handle_api_error(self, e: Exception) -> NoReturn:
-        openai = importlib.import_module("openai")
+        try:
+            openai = importlib.import_module("openai")
+        except ImportError:
+            raise ProviderError(str(e), provider="openai") from e
         if isinstance(e, openai.AuthenticationError):
             raise AuthenticationError(provider="openai") from e
         if isinstance(e, openai.RateLimitError):
