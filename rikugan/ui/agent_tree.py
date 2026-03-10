@@ -357,10 +357,7 @@ class AgentTreeWidget(QWidget):
                     if info and info.status in _FINISHED:
                         to_remove.append(agent_id)
         else:
-            to_remove = [
-                aid for aid, info in self._agents.items()
-                if info.status in _FINISHED
-            ]
+            to_remove = [aid for aid, info in self._agents.items() if info.status in _FINISHED]
 
         for agent_id in to_remove:
             item = self._items.pop(agent_id, None)
@@ -381,10 +378,7 @@ class AgentTreeWidget(QWidget):
         else:
             item = QTreeWidgetItem(self._tree)
             item.setData(0, Qt.ItemDataRole.UserRole, info.agent_id)
-            item.setFlags(
-                Qt.ItemFlag.ItemIsEnabled
-                | Qt.ItemFlag.ItemIsSelectable
-            )
+            item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
             self._items[info.agent_id] = item
 
         item.setText(0, info.name)

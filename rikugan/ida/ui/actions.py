@@ -291,13 +291,15 @@ if _HAS_IDA:
                 idaapi.register_action(desc)
 
             # Register "Open Tools" action (menu + context menu)
-            idaapi.register_action(idaapi.action_desc_t(
-                "rikugan:open_tools",
-                "Open Tools",
-                _OpenToolsAction(self._get_panel),
-                "",
-                "Open the Rikugan Tools panel",
-            ))
+            idaapi.register_action(
+                idaapi.action_desc_t(
+                    "rikugan:open_tools",
+                    "Open Tools",
+                    _OpenToolsAction(self._get_panel),
+                    "",
+                    "Open the Rikugan Tools panel",
+                )
+            )
             idaapi.attach_action_to_menu(
                 "Edit/Plugins/Rikugan/",
                 "rikugan:open_tools",
@@ -305,13 +307,15 @@ if _HAS_IDA:
             )
 
             # Register "Send to Bulk Rename" action
-            idaapi.register_action(idaapi.action_desc_t(
-                "rikugan:send_to_bulk_rename",
-                "Send to Bulk Rename",
-                _SendToBulkRenameAction(self._get_panel),
-                "",
-                "Send function to Rikugan Bulk Renamer",
-            ))
+            idaapi.register_action(
+                idaapi.action_desc_t(
+                    "rikugan:send_to_bulk_rename",
+                    "Send to Bulk Rename",
+                    _SendToBulkRenameAction(self._get_panel),
+                    "",
+                    "Send function to Rikugan Bulk Renamer",
+                )
+            )
 
             self._registered = True
 

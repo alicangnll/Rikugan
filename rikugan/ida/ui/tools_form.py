@@ -69,10 +69,7 @@ class RikuganToolsForm(idaapi.PluginForm):
         if not self._shown:
             self.Show(
                 "Rikugan Tools",
-                options=(
-                    idaapi.PluginForm.WOPN_TAB
-                    | idaapi.PluginForm.WOPN_PERSIST
-                ),
+                options=(idaapi.PluginForm.WOPN_TAB | idaapi.PluginForm.WOPN_PERSIST),
             )
             self._shown = True
         else:

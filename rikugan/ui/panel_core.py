@@ -690,6 +690,8 @@ class RikuganPanelCore(QWidget):
             return
         self._is_shutdown = True
         try:
+            tools_form = getattr(self, "_tools_form", None)
+            tools_panel = getattr(self, "_tools_panel", None)
             self._stop_poll_timer()
             self._stop_skills_refresh_timer()
             _SharedSpinnerTimer.shutdown()
@@ -700,10 +702,10 @@ class RikuganPanelCore(QWidget):
             if self._ui_hooks:
                 self._ui_hooks.unhook()
                 self._ui_hooks = None
-            if self._tools_form is not None:
-                self._tools_form.hide()
-            elif self._tools_panel is not None:
-                self._tools_panel.close()
+            if tools_form is not None:
+                tools_form.hide()
+            elif tools_panel is not None:
+                tools_panel.close()
             self._ctrl.shutdown()
         except Exception as e:
             log_error(f"Panel teardown error: {e}")

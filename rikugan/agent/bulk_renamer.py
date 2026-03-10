@@ -224,10 +224,7 @@ class BulkRenamerEngine:
     def undo_all(self) -> None:
         """Revert all completed renames to their original names."""
         reverted = 0
-        to_undo = [
-            j for j in self._jobs
-            if j.status == RenameStatus.COMPLETED and j.address in self._original_names
-        ]
+        to_undo = [j for j in self._jobs if j.status == RenameStatus.COMPLETED and j.address in self._original_names]
         total = len(to_undo)
         for job in to_undo:
             original = self._original_names[job.address]
@@ -260,9 +257,7 @@ class BulkRenamerEngine:
                     )
                 )
         # Signal completion — reset progress
-        self._event_queue.put(
-            RenameEvent(type=RenameEventType.ALL_DONE, completed=0, total=total)
-        )
+        self._event_queue.put(RenameEvent(type=RenameEventType.ALL_DONE, completed=0, total=total))
         log_info(f"Undo complete: reverted {reverted}/{total} renames")
 
     @staticmethod
@@ -348,9 +343,7 @@ class BulkRenamerEngine:
                 log_error(f"Decompile failed for 0x{job.address:x}: {e}")
 
         if not decompiled:
-            self._event_queue.put(
-                RenameEvent(type=RenameEventType.ALL_DONE, completed=0, total=total)
-            )
+            self._event_queue.put(RenameEvent(type=RenameEventType.ALL_DONE, completed=0, total=total))
             return
 
         # --- Phase 2: split into sub-batches that fit the context window ---
@@ -414,8 +407,7 @@ class BulkRenamerEngine:
             # Fresh single-message prompt — clean context, no history
             full_prompt = QUICK_ANALYSIS_PROMPT + "\n".join(sub_parts)
             log_info(
-                f"Quick batch {num}: {len(sub_jobs)} funcs, "
-                f"{len(full_prompt)} chars (~{len(full_prompt) // 2}tok est)"
+                f"Quick batch {num}: {len(sub_jobs)} funcs, {len(full_prompt)} chars (~{len(full_prompt) // 2}tok est)"
             )
             for job in sub_jobs:
                 job.status = RenameStatus.ANALYZING
@@ -699,9 +691,7 @@ class BulkRenamerEngine:
                     )
                 )
                 log_debug(f"Deep renamed 0x{job.address:x}: {job.current_name!r} -> {new_name!r}")
-                self._update_mgr_agent(
-                    agent_id, "completed", f"Renamed to {new_name}", turn_count
-                )
+                self._update_mgr_agent(agent_id, "completed", f"Renamed to {new_name}", turn_count)
             except Exception as e:
                 job.status = RenameStatus.FAILED
                 job.error = str(e)
@@ -768,6 +758,4 @@ class BulkRenamerEngine:
         }
         mapped = status_map.get(status)
         if mapped is not None:
-            self._subagent_manager.update_external(
-                agent_id, mapped, summary=summary, turn_count=turn_count
-            )
+            self._subagent_manager.update_external(agent_id, mapped, summary=summary, turn_count=turn_count)

@@ -9,7 +9,6 @@ from .qt_compat import (
     QFrame,
     QHBoxLayout,
     QLabel,
-    QPushButton,
     QTabWidget,
     QVBoxLayout,
     QWidget,

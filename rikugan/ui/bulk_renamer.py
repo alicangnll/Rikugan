@@ -515,12 +515,7 @@ class BulkRenamerWidget(QWidget):
             name = entry.name.lower()
 
             # Text filter — match name or hex address
-            text_match = (
-                not text
-                or text in name
-                or text in f"0x{entry.address:x}"
-                or text in f"0x{entry.address:X}"
-            )
+            text_match = not text or text in name or text in f"0x{entry.address:x}" or text in f"0x{entry.address:X}"
 
             # Combo filter
             combo_match = True
@@ -600,16 +595,12 @@ class BulkRenamerWidget(QWidget):
                 selected += 1
 
         if self._deep_radio.isChecked() and selected > 0:
-            self._selection_label.setText(
-                f"{selected} / {total} selected \u2022 {selected} subagents"
-            )
+            self._selection_label.setText(f"{selected} / {total} selected \u2022 {selected} subagents")
         else:
             batch = self._batch_value()
             batches = (selected + batch - 1) // batch if selected > 0 else 0
             if selected > 0:
-                self._selection_label.setText(
-                    f"{selected} / {total} selected \u2022 {batches} batch(es)"
-                )
+                self._selection_label.setText(f"{selected} / {total} selected \u2022 {batches} batch(es)")
             else:
                 self._selection_label.setText(f"{selected} / {total} selected")
 
