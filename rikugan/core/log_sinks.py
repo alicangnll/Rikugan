@@ -120,10 +120,12 @@ class _FlushFileHandler(logging.FileHandler):
 
     def emit(self, record: logging.LogRecord) -> None:
         super().emit(record)
+        stream = self.stream
         try:
-            self.stream.flush()
-        except OSError:
-            pass
+            if stream is not None:
+                stream.flush()
+        except OSError as exc:
+            sys.stderr.write(f"[Rikugan] log flush failed: {exc}\n")
 
 
 # ---------------------------------------------------------------------------

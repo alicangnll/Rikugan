@@ -27,7 +27,6 @@ from .qt_compat import (
     QTimer,
     QVBoxLayout,
     QWidget,
-    Signal,
 )
 from .tool_widgets import ToolApprovalWidget, ToolCallWidget, ToolGroupWidget
 
@@ -48,9 +47,6 @@ def _is_hidden_system_user_message(content: str) -> bool:
 
 class ChatView(QScrollArea):
     """Scrollable chat area that renders TurnEvents into widgets."""
-
-    tool_approval_submitted = Signal(str, str)  # (tool_call_id, "allow"/"deny")
-    user_answer_submitted = Signal(str)  # chosen option / typed answer
 
     def __init__(self, parent: QWidget = None):
         super().__init__(parent)
@@ -96,6 +92,16 @@ class ChatView(QScrollArea):
         self._thinking_hide_timer = QTimer(self)
         self._thinking_hide_timer.setSingleShot(True)
         self._thinking_hide_timer.timeout.connect(self._force_hide_thinking)
+
+        # Plain Python callbacks avoid extra Qt signal traffic in the hot chat path.
+        self._tool_approval_callback = None
+        self._user_answer_callback = None
+
+    def set_tool_approval_callback(self, callback) -> None:
+        self._tool_approval_callback = callback
+
+    def set_user_answer_callback(self, callback) -> None:
+        self._user_answer_callback = callback
 
     def add_user_message(self, text: str) -> None:
         widget = UserMessageWidget(text)
@@ -296,7 +302,7 @@ class ChatView(QScrollArea):
                 event.tool_args,
                 event.text,
             )
-            widget.approved.connect(self._on_tool_approval)
+            widget.set_approved_callback(self._on_tool_approval)
             self._insert_widget(widget)
             self._scroll_to_bottom()
 
@@ -415,17 +421,19 @@ class ChatView(QScrollArea):
         else:  # USER_QUESTION
             options = event.metadata.get("options", [])
         widget = UserQuestionWidget(event.text, options)
-        widget.option_selected.connect(self._on_user_answer)
+        widget.set_option_selected_callback(self._on_user_answer)
         self._insert_widget(widget)
         self._scroll_to_bottom()
 
     def _on_tool_approval(self, tool_call_id: str, decision: str) -> None:
         """Forward tool approval decision to the panel/controller."""
-        self.tool_approval_submitted.emit(tool_call_id, decision)
+        if self._tool_approval_callback is not None:
+            self._tool_approval_callback(tool_call_id, decision)
 
     def _on_user_answer(self, answer: str) -> None:
         """Forward a button-selected answer to the panel/controller."""
-        self.user_answer_submitted.emit(answer)
+        if self._user_answer_callback is not None:
+            self._user_answer_callback(answer)
 
     def restore_from_messages(self, messages: list[Message]) -> None:
         """Replay saved Message objects into the chat view."""
@@ -518,3 +526,5 @@ class ChatView(QScrollArea):
         self._scroll_timer.stop()
         self._thinking_hide_timer.stop()
         self._force_hide_thinking()
+        self._tool_approval_callback = None
+        self._user_answer_callback = None

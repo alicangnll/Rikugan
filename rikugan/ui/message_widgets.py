@@ -18,7 +18,6 @@ from .qt_compat import (
     QToolButton,
     QVBoxLayout,
     QWidget,
-    Signal,
 )
 
 _THINKING_PHRASES = [
@@ -381,10 +380,9 @@ class QueuedMessageWidget(QFrame):
 class UserQuestionWidget(QFrame):
     """Displays a question from the agent to the user with clickable option buttons."""
 
-    option_selected = Signal(str)  # emitted with the chosen option text
-
     def __init__(self, question: str, options: list | None = None, parent: QWidget = None):
         super().__init__(parent)
+        self._option_selected_callback = None
         self.setObjectName("message_question")
         self.setStyleSheet(
             "QFrame#message_question { border: 1px solid #dcdcaa; border-radius: 6px; background: #2d2d1e; }"
@@ -425,13 +423,17 @@ class UserQuestionWidget(QFrame):
             layout.addLayout(btn_layout)
             self._buttons = btn_layout
 
+    def set_option_selected_callback(self, callback) -> None:
+        self._option_selected_callback = callback
+
     def _on_option(self, option: str) -> None:
         # Disable all buttons after selection
         for i in range(self._buttons.count()):
             item = self._buttons.itemAt(i)
             if item and item.widget():
                 item.widget().setEnabled(False)
-        self.option_selected.emit(option)
+        if self._option_selected_callback is not None:
+            self._option_selected_callback(option)
 
 
 class ExplorationPhaseWidget(QFrame):

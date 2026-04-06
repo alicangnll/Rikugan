@@ -9,8 +9,6 @@ import time
 from collections.abc import Callable
 from typing import Any
 
-from PySide6.QtWidgets import QStackedWidget
-
 from ..agent.mutation import MutationRecord
 from ..agent.turn import TurnEvent, TurnEventType
 from ..core.config import RikuganConfig
@@ -31,6 +29,7 @@ from .qt_compat import (
     QMessageBox,
     QPushButton,
     QSplitter,
+    QStackedWidget,
     Qt,
     QTabBar,
     QTabWidget,
@@ -38,9 +37,7 @@ from .qt_compat import (
     QToolButton,
     QVBoxLayout,
     QWidget,
-    Signal,
 )
-from .settings_dialog import SettingsDialog
 from .styles import DARK_THEME
 from .tool_widgets import _SharedSpinnerTimer
 from .tools_panel import ToolsPanel
@@ -167,12 +164,11 @@ def _export_format_subagent_log(messages) -> str:
 class _AddButtonTabBar(QTabBar):
     """Tab bar with an integrated '+' button positioned after the last tab."""
 
-    add_tab_requested = Signal()
-    export_tab_requested = Signal(int)
-    fork_tab_requested = Signal(int)
-
     def __init__(self, parent=None):
         super().__init__(parent)
+        self._add_tab_callback: Callable[[], None] | None = None
+        self._export_tab_callback: Callable[[int], None] | None = None
+        self._fork_tab_callback: Callable[[int], None] | None = None
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self._show_context_menu)
         self._add_btn = QToolButton(self)
@@ -184,7 +180,20 @@ class _AddButtonTabBar(QTabBar):
             "border: none; background: transparent; }"
             "QToolButton:hover { background: #3c3c3c; border-radius: 3px; }"
         )
-        self._add_btn.clicked.connect(self.add_tab_requested)
+        self._add_btn.clicked.connect(self._handle_add_tab)
+
+    def set_add_tab_callback(self, callback: Callable[[], None] | None) -> None:
+        self._add_tab_callback = callback
+
+    def set_export_tab_callback(self, callback: Callable[[int], None] | None) -> None:
+        self._export_tab_callback = callback
+
+    def set_fork_tab_callback(self, callback: Callable[[int], None] | None) -> None:
+        self._fork_tab_callback = callback
+
+    def _handle_add_tab(self) -> None:
+        if self._add_tab_callback is not None:
+            self._add_tab_callback()
 
     def _show_context_menu(self, pos):
         index = self.tabAt(pos)
@@ -194,10 +203,10 @@ class _AddButtonTabBar(QTabBar):
         export_action = menu.addAction("Export Chat")
         fork_action = menu.addAction("Fork Session")
         action = menu.exec_(self.mapToGlobal(pos))
-        if action == export_action:
-            self.export_tab_requested.emit(index)
-        elif action == fork_action:
-            self.fork_tab_requested.emit(index)
+        if action == export_action and self._export_tab_callback is not None:
+            self._export_tab_callback(index)
+        elif action == fork_action and self._fork_tab_callback is not None:
+            self._fork_tab_callback(index)
 
     def tabInserted(self, index):
         super().tabInserted(index)
@@ -356,8 +365,8 @@ class RikuganPanelCore(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        # Top-level mode switcher: Chat | Tools (like Binja's Tags | Tag Types)
-        # Hidden for IDA which uses a separate dockable form for tools.
+        # Top-level mode switcher: Chat | Tools.
+        # Hosts may optionally provide tools in a separate form.
         self._mode_bar = QTabBar()
         self._mode_bar.setObjectName("mode_bar")
         self._mode_bar.setStyleSheet(self._MODE_BAR_STYLE)
@@ -389,9 +398,8 @@ class RikuganPanelCore(QWidget):
         self._tools_panel: ToolsPanel | None = ToolsPanel()
         self._tools_panel.hide_header()
         if self._tools_form_factory is not None:
-            # IDA: ToolsPanel will live in a separate dockable form, not
-            # in the mode_stack.  Add a lightweight placeholder so the
-            # stack still has a page 1.
+            # Separate tools-form hosts keep a lightweight placeholder in the
+            # stack so page indices stay stable while tools live elsewhere.
             _tools_placeholder = QWidget()
             self._mode_stack.addWidget(_tools_placeholder)
         else:
@@ -423,9 +431,9 @@ class RikuganPanelCore(QWidget):
         self._tab_widget.setTabsClosable(True)
         self._tab_widget.tabCloseRequested.connect(self._on_close_tab)
         self._tab_widget.currentChanged.connect(self._on_tab_changed)
-        self._tab_bar.add_tab_requested.connect(self._on_new_tab)
-        self._tab_bar.export_tab_requested.connect(self._on_export_tab)
-        self._tab_bar.fork_tab_requested.connect(self._on_fork_tab)
+        self._tab_bar.set_add_tab_callback(self._on_new_tab)
+        self._tab_bar.set_export_tab_callback(self._on_export_tab)
+        self._tab_bar.set_fork_tab_callback(self._on_fork_tab)
         self._tab_widget.setStyleSheet(
             "QTabWidget::pane { border: none; }"
             "QTabBar { background: #1e1e1e; border: none; }"
@@ -533,8 +541,8 @@ class RikuganPanelCore(QWidget):
         """Create a new ChatView and add it as a tab."""
         chat_view = ChatView()
         chat_view.setProperty("tab_id", tab_id)  # O(1) lookup in _tab_id_at_index
-        chat_view.tool_approval_submitted.connect(self._on_tool_approval)
-        chat_view.user_answer_submitted.connect(self._on_user_answer_submitted)
+        chat_view.set_tool_approval_callback(self._on_tool_approval)
+        chat_view.set_user_answer_callback(self._on_user_answer_submitted)
         self._chat_views[tab_id] = chat_view
         index = self._tab_widget.addTab(chat_view, label)
         self._tab_widget.setCurrentIndex(index)
@@ -871,6 +879,8 @@ class RikuganPanelCore(QWidget):
 
     def _on_settings(self) -> None:
         try:
+            from .settings_dialog import SettingsDialog
+
             dlg = SettingsDialog(
                 self._config,
                 registry=self._ctrl.provider_registry,
@@ -1352,7 +1362,7 @@ class RikuganPanelCore(QWidget):
         rename_jobs = [RenameJob(address=j["address"], current_name=j["current_name"]) for j in jobs]
         engine.enqueue(rename_jobs)
         self._renamer_engine = engine
-        engine.start(deep=(mode == "deep"))
+        engine.start_renaming(deep=(mode == "deep"))
 
     def _on_renamer_pause(self) -> None:
         engine = getattr(self, "_renamer_engine", None)
@@ -1365,7 +1375,7 @@ class RikuganPanelCore(QWidget):
     def _on_renamer_cancel(self) -> None:
         engine = getattr(self, "_renamer_engine", None)
         if engine is not None:
-            engine.cancel()
+            engine.cancel_renaming()
 
     def _on_renamer_undo(self) -> None:
         engine = getattr(self, "_renamer_engine", None)

@@ -20,7 +20,6 @@ from .qt_compat import (
     QToolButton,
     QVBoxLayout,
     QWidget,
-    Signal,
 )
 
 _MAX_ARGS_DISPLAY = 2000
@@ -970,8 +969,6 @@ class _PythonHighlighter(QSyntaxHighlighter):
 class ToolApprovalWidget(QFrame):
     """Displays a tool approval request with syntax-highlighted code preview."""
 
-    approved = Signal(str, str)  # (tool_call_id, "allow" or "deny")
-
     def __init__(
         self,
         tool_call_id: str,
@@ -981,6 +978,7 @@ class ToolApprovalWidget(QFrame):
         parent: QWidget = None,
     ):
         super().__init__(parent)
+        self._approved_callback = None
         self.setObjectName("message_question")
         self.setStyleSheet(
             "QFrame#message_question { border: 1px solid #dcdcaa; border-radius: 6px; background: #2d2d1e; }"
@@ -1006,6 +1004,9 @@ class ToolApprovalWidget(QFrame):
             layout.addWidget(editor)
 
         layout.addLayout(self._build_approval_buttons())
+
+    def set_approved_callback(self, callback) -> None:
+        self._approved_callback = callback
 
     @staticmethod
     def _extract_code(args_text: str) -> str:
@@ -1092,7 +1093,8 @@ class ToolApprovalWidget(QFrame):
             "QToolButton { background: #1a5c2d; color: #808080; border: none; "
             "border-radius: 4px; padding: 4px 16px; font-size: 11px; }"
         )
-        self.approved.emit(self._tool_call_id, "allow")
+        if self._approved_callback is not None:
+            self._approved_callback(self._tool_call_id, "allow")
 
     def _on_always_allow(self):
         self._disable_buttons()
@@ -1101,7 +1103,8 @@ class ToolApprovalWidget(QFrame):
             "QToolButton { background: #1a5c2d; color: #808080; border: none; "
             "border-radius: 4px; padding: 4px 16px; font-size: 11px; }"
         )
-        self.approved.emit(self._tool_call_id, "allow_all")
+        if self._approved_callback is not None:
+            self._approved_callback(self._tool_call_id, "allow_all")
 
     def _on_deny(self):
         self._disable_buttons()
@@ -1110,4 +1113,5 @@ class ToolApprovalWidget(QFrame):
             "QToolButton { background: #6e1a12; color: #808080; border: none; "
             "border-radius: 4px; padding: 4px 16px; font-size: 11px; }"
         )
-        self.approved.emit(self._tool_call_id, "deny")
+        if self._approved_callback is not None:
+            self._approved_callback(self._tool_call_id, "deny")
