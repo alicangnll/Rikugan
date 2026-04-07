@@ -12,6 +12,25 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from tests.mocks.ida_mock import install_ida_mocks
 install_ida_mocks()
 
+# Some UI tests stub modules in sys.modules; ensure this test gets real ones.
+for _mod_name in [
+    "rikugan.core.types",
+    "rikugan.core.config",
+    "rikugan.core.logging",
+    "rikugan.agent.turn",
+    "rikugan.agent.mutation",
+    "rikugan.providers.auth_cache",
+    "rikugan.providers.anthropic_provider",
+    "rikugan.providers.ollama_provider",
+    "rikugan.providers.registry",
+    "rikugan.ui.chat_view",
+    "rikugan.ui.context_bar",
+    "rikugan.ui.input_area",
+    "rikugan.ui.styles",
+    "rikugan.ui.tool_widgets",
+]:
+    sys.modules.pop(_mod_name, None)
+
 from rikugan.core.config import RikuganConfig
 from rikugan.core.types import Message, Role, TokenUsage, ToolCall, ToolResult
 from rikugan.ida.ui.session_controller import IdaSessionController
@@ -107,6 +126,21 @@ class TestIdaSessionController(unittest.TestCase):
         self.assertEqual(self.ctrl.session.id, saved_id)
         self.assertEqual(len(self.ctrl.session.messages), 1)
         self.assertEqual(self.ctrl.session.messages[0].content, "persisted")
+
+    def test_restore_sessions_returns_saved_sessions(self):
+        self.ctrl.session.add_message(Message(role=Role.USER, content="persisted one"))
+        self.cfg.checkpoint_auto_save = True
+        self.ctrl.on_agent_finished()
+
+        self.ctrl.new_chat()
+        self.ctrl.session.add_message(Message(role=Role.USER, content="persisted two"))
+        self.ctrl.on_agent_finished()
+
+        ctrl2 = IdaSessionController(self.cfg)
+        restored = ctrl2.restore_sessions()
+        self.assertEqual(len(restored), 2)
+        self.assertTrue(all(session.messages for _, session in restored))
+        ctrl2.shutdown()
 
     def test_restore_preserves_token_usage(self):
         """Full round-trip: save with token usage -> restore -> verify preserved."""
