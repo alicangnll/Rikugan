@@ -16,6 +16,7 @@ Detection order:
 from __future__ import annotations
 
 import sys
+from typing import Any, cast
 
 
 def _detect_binding() -> str:
@@ -160,23 +161,24 @@ else:
 
 
 def qt_flags(*flags: object) -> object:
-    """Combine Qt enum/flag values without relying on PyQt5 shim bitwise behavior."""
+    """Combine same-family Qt enum/flag values without relying on PyQt5 shim bitwise behavior."""
     if not flags:
         return 0
 
     value = 0
-    flag_type = None
+    flag_type: type[Any] | None = None
     for flag in flags:
+        current_type = type(flag)
         if flag_type is None:
-            flag_type = type(flag)
-        value |= int(getattr(flag, "value", flag))
+            flag_type = current_type
+        elif current_type is not flag_type:
+            raise TypeError(f"qt_flags() received mixed flag types: {flag_type.__name__} and {current_type.__name__}")
+        flag_value = getattr(flag, "value", flag)
+        value |= int(cast(Any, flag_value))
 
-    if flag_type is not None:
-        try:
-            return flag_type(value)
-        except Exception:
-            pass
-    return value
+    if flag_type is None:
+        return value
+    return cast(Any, flag_type)(value)
 
 
 def qt_run(obj: object, *args, **kwargs) -> object:

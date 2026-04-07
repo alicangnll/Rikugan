@@ -103,6 +103,7 @@ def ensure_pyside6_stubs() -> None:
     _installed = True
 
     _sentinel = type("_Qt", (), {})()
+    _sentinel.ItemDataRole = type("_ItemDataRole", (), {"UserRole": 32})()
 
     sys.modules.setdefault("PySide6", _stub_mod("PySide6"))
     sys.modules.setdefault(
