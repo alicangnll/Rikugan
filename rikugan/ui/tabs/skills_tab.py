@@ -101,8 +101,8 @@ class SkillsTab(QWidget):
             cb.setChecked(skill.slug not in disabled_set)
             # Store skill data for later retrieval
             self._skill_details[skill.slug] = skill
-            # Connect state change event to show description
-            cb.stateChanged.connect(lambda state, s=skill.slug: self._on_skill_state_changed(s, state))
+            # Connect state change event to show description (use int() for Qt 6 compat)
+            cb.stateChanged.connect(lambda state, s=skill.slug: self._on_skill_state_changed(s, int(state)))
             self._rikugan_checks[skill.slug] = cb
             layout.addWidget(cb)
 
@@ -150,8 +150,8 @@ class SkillsTab(QWidget):
             cb.setChecked(ext_id in enabled_set)
             # Store skill data for later retrieval
             self._skill_details[ext_id] = skill
-            # Connect state change event to show description
-            cb.stateChanged.connect(lambda state, s=ext_id: self._on_skill_state_changed(s, state))
+            # Connect state change event to show description (use int() for Qt 6 compat)
+            cb.stateChanged.connect(lambda state, s=ext_id: self._on_skill_state_changed(s, int(state)))
             self._external_checks[ext_id] = cb
             layout.addWidget(cb)
 
@@ -163,15 +163,22 @@ class SkillsTab(QWidget):
             if ext_id.startswith(f"{source_key}:"):
                 checkbox.setChecked(checked)
 
-    def _on_skill_state_changed(self, skill_id: str, state) -> None:
+    def _on_skill_state_changed(self, skill_id: str, state: int) -> None:
         """Handle skill checkbox state change - show skill description in text area when checked."""
+        # Debug: log state change
+        log_debug(f"Skill state changed: {skill_id}, state={state} (0=unchecked, 1=partial, 2=checked)")
+
+        # Qt 6: state is int (0=unchecked, 1=partially checked, 2=checked)
         # Only show description when checkbox is checked
-        if state != Qt.CheckState.Checked.value:
+        if state != 2:  # Qt.CheckState.Checked.value
             return
 
         skill = self._skill_details.get(skill_id)
         if not skill:
+            log_debug(f"Skill not found in details: {skill_id}")
             return
+
+        log_debug(f"Showing description for skill: {skill_id}")
 
         # Build description text
         desc_lines = []
@@ -191,8 +198,8 @@ class SkillsTab(QWidget):
                     if body.strip():
                         desc_lines.append("---")
                         desc_lines.append(body)
-            except Exception:
-                pass
+            except Exception as e:
+                log_debug(f"Failed to read skill file {skill_path}: {e}")
 
         self._description_text.setText("\n".join(desc_lines))
 
