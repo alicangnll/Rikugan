@@ -923,7 +923,7 @@ class SettingsDialog(QDialog):
 
         self._changelog_text = QLabel()
         self._changelog_text.setWordWrap(True)
-        self._changelog_text.setTextAlignment(Qt.AlignmentFlag.AlignTop)
+        self._changelog_text.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
         self._changelog_text.setStyleSheet(
             "background: #2d2d2d; color: #d4d4d4; padding: 10px; "
             "border: 1px solid #3c3c3c; font-family: monospace; font-size: 11px;"
