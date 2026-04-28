@@ -789,7 +789,8 @@ class SettingsDialog(QDialog):
     def _build_token_limiter_tab(self) -> QWidget:
         """Build the token limiter settings tab."""
         widget = QWidget()
-        layout = QFormLayout()
+        main_layout = QVBoxLayout()
+        form_layout = QFormLayout()
 
         # Enable token limiter
         self._token_limiter_enabled_cb = QCheckBox("Enable Token Limiter")
@@ -798,7 +799,7 @@ class SettingsDialog(QDialog):
             "Enforce token usage limits to prevent excessive API usage.\n"
             "When enabled, requests exceeding the limits will be rejected."
         )
-        layout.addRow("Token Limiter:", self._token_limiter_enabled_cb)
+        form_layout.addRow("Token Limiter:", self._token_limiter_enabled_cb)
 
         # Max input tokens
         self._max_input_tokens_spin = QSpinBox()
@@ -806,7 +807,7 @@ class SettingsDialog(QDialog):
         self._max_input_tokens_spin.setValue(100000)
         self._max_input_tokens_spin.setSuffix(" tokens")
         self._max_input_tokens_spin.setToolTip("Maximum input tokens per request")
-        layout.addRow("Max Input Tokens:", self._max_input_tokens_spin)
+        form_layout.addRow("Max Input Tokens:", self._max_input_tokens_spin)
 
         # Max output tokens
         self._max_output_tokens_spin = QSpinBox()
@@ -814,7 +815,7 @@ class SettingsDialog(QDialog):
         self._max_output_tokens_spin.setValue(50000)
         self._max_output_tokens_spin.setSuffix(" tokens")
         self._max_output_tokens_spin.setToolTip("Maximum output tokens per request")
-        layout.addRow("Max Output Tokens:", self._max_output_tokens_spin)
+        form_layout.addRow("Max Output Tokens:", self._max_output_tokens_spin)
 
         # Max total tokens
         self._max_total_tokens_spin = QSpinBox()
@@ -822,7 +823,7 @@ class SettingsDialog(QDialog):
         self._max_total_tokens_spin.setValue(200000)
         self._max_total_tokens_spin.setSuffix(" tokens")
         self._max_total_tokens_spin.setToolTip("Maximum total tokens per request")
-        layout.addRow("Max Total Tokens:", self._max_total_tokens_spin)
+        form_layout.addRow("Max Total Tokens:", self._max_total_tokens_spin)
 
         # Action when limit exceeded
         self._token_limiter_action_combo = QComboBox()
@@ -834,7 +835,7 @@ class SettingsDialog(QDialog):
             "  warn: Show a warning but continue\n"
             "  none: Ignore the limit"
         )
-        layout.addRow("On Limit Exceeded:", self._token_limiter_action_combo)
+        form_layout.addRow("On Limit Exceeded:", self._token_limiter_action_combo)
 
         # Session usage display
         usage_group = QGroupBox("Session Token Usage")
@@ -851,13 +852,13 @@ class SettingsDialog(QDialog):
         usage_layout.addRow("Remaining Tokens:", self._session_remaining_tokens_label)
 
         usage_group.setLayout(usage_layout)
-        layout.addRow(usage_group)
+        form_layout.addRow(usage_group)
 
         # Reset button
         reset_btn = QPushButton("Reset Session Usage")
         reset_btn.setToolTip("Reset the session token usage counters to zero")
         reset_btn.clicked.connect(self._on_reset_token_usage)
-        layout.addRow(reset_btn)
+        form_layout.addRow(reset_btn)
 
         # Info text
         info_label = QLabel(
@@ -866,10 +867,11 @@ class SettingsDialog(QDialog):
         )
         info_label.setWordWrap(True)
         info_label.setStyleSheet("color: #888888; font-size: 11px;")
-        layout.addRow(info_label)
+        form_layout.addRow(info_label)
 
-        layout.addStretch()
-        widget.setLayout(layout)
+        main_layout.addLayout(form_layout)
+        main_layout.addStretch()
+        widget.setLayout(main_layout)
 
         # Load current settings
         self._load_token_limiter_settings()
