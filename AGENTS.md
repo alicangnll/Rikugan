@@ -29,11 +29,30 @@ rikugan/
 │   ├── host.py               # Host context (BV, address, navigate callback)
 │   ├── logging.py            # Logging utilities
 │   ├── thread_safety.py      # Thread-safety helpers (@idasync, etc.)
-│   └── types.py              # Core data types (Message, ToolCall, StreamChunk, etc.)
+│   ├── types.py              # Core data types (Message, ToolCall, StreamChunk, etc.)
+│   ├── xref.py               # Cross-reference analysis engine (v1.2.5+)
+│   ├── function_naming.py    # Smart function naming (v1.2.5+)
+│   ├── type_recovery.py      # Type library auto-detection (v1.2.5+)
+│   ├── bookmark.py           # Code bookmarking system (v1.2.5+)
+│   └── advanced_search.py    # Advanced search engine (v1.2.5+)
 │
 ├── ida/                      # IDA Pro host package
 │   ├── tools/
-│   │   └── registry.py       # IDA create_default_registry() — imports rikugan.tools.*
+│   │   ├── registry.py       # IDA create_default_registry() — imports rikugan.tools.*
+│   │   ├── advanced_decomp.py # Advanced decompilation tools (v1.2.5+)
+│   │   ├── navigation.py     # IDA navigation tools
+│   │   ├── functions.py      # IDA function tools
+│   │   ├── strings.py        # IDA string tools
+│   │   ├── database.py       # IDA database tools (segments, imports, exports)
+│   │   ├── disassembly.py    # IDA disassembly tools
+│   │   ├── decompiler.py     # IDA decompiler tools (Hex-Rays)
+│   │   ├── xrefs.py          # IDA xref tools
+│   │   ├── annotations.py    # IDA annotation tools (rename, comment, set type)
+│   │   ├── types_tools.py    # IDA type tools (structs, enums, typedefs, TILs)
+│   │   ├── microcode.py      # IDA Hex-Rays microcode tools
+│   │   ├── microcode_format.py   # Microcode formatting helpers
+│   │   ├── microcode_optim.py    # Microcode optimizer framework
+│   │   └── scripting.py      # IDA execute_python tool
 │   └── ui/
 │       ├── panel.py          # IDA PluginForm wrapper
 │       ├── actions.py        # IDA UI hooks & context menu actions
@@ -42,6 +61,7 @@ rikugan/
 ├── binja/                    # Binary Ninja host package
 │   ├── tools/
 │   │   ├── registry.py       # BN create_default_registry() — imports rikugan.binja.tools.*
+│   │   ├── advanced_decomp.py # Advanced decompilation tools (v1.2.5+)
 │   │   ├── common.py         # BN shared helpers (get_bv, get_function_at, etc.)
 │   │   ├── navigation.py     # Navigation tools
 │   │   ├── functions.py      # Function listing/search tools
@@ -61,22 +81,14 @@ rikugan/
 │       ├── actions.py        # BN action handlers
 │       └── session_controller.py  # BN BinaryNinjaSessionController
 │
-├── tools/                    # IDA tool implementations
+├── tools/                    # Shared tool infrastructure
 │   ├── base.py               # @tool decorator, ToolDefinition, JSON schema generation
 │   ├── registry.py           # Shared ToolRegistry class
-│   ├── navigation.py         # IDA navigation tools
-│   ├── functions.py          # IDA function tools
-│   ├── strings.py            # IDA string tools
-│   ├── database.py           # IDA database tools (segments, imports, exports)
-│   ├── disassembly.py        # IDA disassembly tools
-│   ├── decompiler.py         # IDA decompiler tools (Hex-Rays)
-│   ├── xrefs.py              # IDA xref tools
-│   ├── annotations.py        # IDA annotation tools (rename, comment, set type)
-│   ├── types_tools.py        # IDA type tools (structs, enums, typedefs, TILs)
-│   ├── microcode.py          # IDA Hex-Rays microcode tools
-│   ├── microcode_format.py   # Microcode formatting helpers
-│   ├── microcode_optim.py    # Microcode optimizer framework
-│   └── scripting.py          # IDA execute_python tool
+│   ├── xref_visualizer.py    # Cross-reference visualization tool (v1.2.5+)
+│   ├── function_namer.py     # Smart function naming tool (v1.2.5+)
+│   ├── type_recovery.py      # Type recovery tool (v1.2.5+)
+│   ├── bookmark_manager.py   # Code bookmarking tool (v1.2.5+)
+│   └── advanced_search.py    # Advanced search tool (v1.2.5+)
 │
 ├── hosts/                    # Backward-compat shims → rikugan.ida.ui.* / rikugan.binja.ui.*
 │

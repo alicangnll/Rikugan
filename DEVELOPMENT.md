@@ -118,6 +118,7 @@ Tests are organized under `tests/` by subsystem:
 tests/
 ├── agent/       # Agent loop, plan mode, exploration, session
 ├── core/        # Config, sanitize, errors, profile, logging
+│                # + xref, function_naming, type_recovery, bookmark, advanced_search (v1.2.5+)
 ├── providers/   # All LLM providers
 ├── tools/       # Tool implementations (binja, IDA, shared)
 └── mocks/       # ida_mock — stubs the IDA Pro API for testing outside IDA

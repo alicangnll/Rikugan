@@ -41,6 +41,14 @@ The agent really ***lives*** and ***breathes*** reversing.
 
 **60+ tools** covering navigation, decompiler, disassembly, cross-references, strings, annotations, types, scripting, and host-specific IL/microcode manipulation. The agent always asks permission before running scripts and will never execute the target binary. Full tool reference in the [docs](https://rikugan.reversing.codes/docs.html).
 
+**Advanced Decompilation Integration** — New in v1.2.5! Smart analysis tools that understand your binary:
+
+- **Cross-Reference Visualizer** — Interactive call graphs with complexity metrics and path finding
+- **Smart Function Naming** — AI-powered pattern recognition suggests meaningful names for `sub_XXX` functions
+- **Type Library Auto-Detection** — Automatically detects platform (Windows/Linux) and recovers structure definitions
+- **Code Bookmarking** — Mark important locations with categories, tags, and notes
+- **Advanced Search** — Find similar functions using Jaccard similarity, search by patterns/strings/imports
+
 **Exploration** — Inspired by how code agents work, but applied to binaries. The orchestrator maps the binary (imports, exports, strings, key functions), then spawns isolated subagents to analyze in parallel. Each reports back, and the orchestrator synthesizes a complete picture.
 
 |![alt text](assets/subagents_example_3.png)|
@@ -61,7 +69,7 @@ The agent really ***lives*** and ***breathes*** reversing.
 
 **Memory** — Findings are saved to `RIKUGAN.md` next to your database, persisting across sessions.
 
-**Skills & MCP** — 12 built-in skills, custom skill support, and MCP server integration. Reuse skills and MCP servers from Claude Code and Codex.
+**Skills & MCP** — 41 total skills (32 built-in + 9 external), custom skill support, and MCP server integration. Reuse skills and MCP servers from Claude Code and Codex. New v1.2.5 skills include reverse-engineering, protocol-analysis, crypto-analysis, firmware-re, and web-app-security.
 
 ### Profiles
 

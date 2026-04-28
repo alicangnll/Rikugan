@@ -66,6 +66,11 @@ Key files:
 - `rikugan/agent/turn.py` — `TurnEvent` / `TurnEventType`
 - `rikugan/tools/base.py` — `@tool` decorator, `ToolDefinition`
 - `rikugan/tools/registry.py` — `ToolRegistry`
+- `rikugan/core/xref.py` — Cross-reference analysis engine
+- `rikugan/core/function_naming.py` — Smart function naming
+- `rikugan/core/type_recovery.py` — Type library auto-detection
+- `rikugan/core/bookmark.py` — Code bookmarking system
+- `rikugan/core/advanced_search.py` — Advanced search engine
 - `rikugan/ui/panel_core.py` — `RikuganPanelCore` (Qt UI)
 - `rikugan/ui/session_controller_base.py` — `SessionControllerBase`
 
@@ -992,6 +997,133 @@ for attempt in range(max_retries):
 
 ```json
 {"ts": 1709500000.123, "level": "INFO", "thread": "Thread-1", "msg": "Subagent started"}
+```
+
+---
+
+## Advanced Decompilation Integration
+
+**New in v1.2.5** — Smart analysis tools that understand binary structure and patterns.
+
+### Core Modules
+
+#### `rikugan/core/xref.py` — Cross-Reference Analysis Engine
+
+```python
+class XRefGraph:
+    functions: Dict[int, FunctionInfo]
+    xrefs: List[XRef]
+    
+    def find_paths(source, target, max_depth) -> List[List[int]]
+    def calculate_complexity_metrics() -> Dict[str, Any]
+    def find_similar_functions(func_addr, threshold) -> List[Tuple[int, float]]
+```
+
+- **Call graph analysis** — BFS-based path finding between functions
+- **Complexity metrics** — Entry points, leaf functions, cyclomatic complexity
+- **Jaccard similarity** — Find functions with similar calling patterns
+- **Complexity distribution** — Low/medium/high/very-high buckets
+
+#### `rikugan/core/function_naming.py` — Smart Function Naming
+
+```python
+class FunctionNamer:
+    API_PATTERNS: Dict[str, FunctionPattern]  # Windows/Linux/libc patterns
+    STRING_PATTERNS: Dict[str, str]  # URL, IP, hash, format strings
+    
+    def suggest_name(features: FunctionFeatures) -> List[NamingSuggestion]
+```
+
+- **Pattern recognition** — 20+ function patterns (init, getter, setter, validator, parser, etc.)
+- **Import analysis** — Detects API usage (Windows API, libc, pthread, etc.)
+- **String analysis** — Finds URLs, IPs, hashes, error messages, config strings
+- **Structure heuristics** — Wrappers, single callee, validation patterns
+
+#### `rikugan/core/type_recovery.py` — Type Library Auto-Detection
+
+```python
+class TypeRecoveryEngine:
+    WINDOWS_TYPES: Dict[str, TypeInfo]  # HANDLE, HWND, BOOL, DWORD, etc.
+    LINUX_TYPES: Dict[str, TypeInfo]   # size_t, pid_t, socklen_t, etc.
+    WINDOWS_STRUCTS: Dict[str, TypeInfo]  # RECT, POINT, MSG, etc.
+    LINUX_STRUCTS: Dict[str, TypeInfo]   # sockaddr, sockaddr_in, etc.
+```
+
+- **Platform detection** — Auto-detects Windows/Linux from import patterns
+- **Standard types** — 40+ Windows and 20+ Linux primitive types
+- **Common structures** — RECT, POINT, sockaddr, sockaddr_in, in_addr, etc.
+- **Signature matching** — Match function signatures to known APIs
+
+#### `rikugan/core/bookmark.py` — Code Bookmarking System
+
+```python
+class BookmarkManager:
+    def add_bookmark(name, type, category, address, notes, tags, color)
+    def get_bookmarks_at_address(address) -> List[Bookmark]
+    def search_bookmarks(query) -> List[Bookmark]
+```
+
+- **14 categories** — interesting, vulnerability, critical, algorithm, obfuscated, anti_debug, anti_vm, crypto, network, file_io, string, import, export, custom
+- **Tag-based organization** — Add custom tags for filtering
+- **Search & filter** — Search by name, notes, tags, category
+- **JSON persistence** — Bookmarks saved to config directory
+
+#### `rikugan/core/advanced_search.py` — Advanced Search Engine
+
+```python
+class AdvancedSearchEngine:
+    def search(criteria, query, min_score, max_results) -> List[SearchResult]
+```
+
+- **Similarity search** — Jaccard similarity on callees, strings, imports
+- **Pattern search** — Regex-based instruction pattern matching
+- **String/import search** — Find functions using specific strings or imports
+- **Callee/caller search** — Find all callers or callees of a function
+- **Size/complexity search** — Filter by function size or complexity
+- **Combined search** — Weighted multi-criteria search
+
+### Tool Definitions
+
+All tools are registered in both IDA Pro and Binary Ninja:
+
+| Tool | Description |
+|------|-------------|
+| `analyze_function_xrefs` | Analyze cross-references with call paths and complexity metrics |
+| `suggest_function_name` | Suggest meaningful names for anonymous functions |
+| `search_similar_functions` | Find functions similar to target using Jaccard similarity |
+| `detect_types_platform` | Auto-detect platform and apply standard type libraries |
+
+### Platform Integration
+
+**IDA Pro**: `rikugan/ida/tools/advanced_decomp.py`
+- Uses IDA API (`ida_funcs`, `ida_name`, `ida_xref`, `idautils`)
+- Collects functions, xrefs, strings, imports
+- Builds graphs and runs analysis
+
+**Binary Ninja**: `rikugan/binja/tools/advanced_decomp.py`
+- Placeholder for future Binary Ninja API integration
+- Same tool interface, swap host-specific collector
+
+### Data Flow
+
+```
+User Request (e.g., "suggest names for anonymous functions")
+    ↓
+Tool: `suggest_function_name`
+    ↓
+Host Collector (IDA/BN)
+    ↓
+FunctionNamer.suggest_name(features)
+    ↓
+Analysis:
+  - Check imports → API patterns
+  - Check strings → String patterns  
+  - Check callees → Structure patterns
+  - Check position → Graph patterns
+    ↓
+NamingSuggestions (name, confidence, pattern, reason)
+    ↓
+UI Display
 ```
 
 ---
