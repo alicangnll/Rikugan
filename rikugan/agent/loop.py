@@ -1000,8 +1000,19 @@ class AgentLoop:
                         f"Warning: malformed arguments for tool '{tc_name}'. "
                         "The tool call will proceed with empty arguments."
                     )
+
+                # Extract parameter descriptions from tool definition
+                param_descriptions = None
+                tool_def = self.tools.get(tc_name)
+                if tool_def and tool_def.parameters:
+                    param_descriptions = {
+                        param_name: param.get("description", "")
+                        for param_name, param in tool_def.parameters.items()
+                        if param.get("description")
+                    }
+
                 tool_calls.append(ToolCall(id=tc_id, name=tc_name, arguments=args))
-                yield TurnEvent.tool_call_done(tc_id, tc_name, raw_args)
+                yield TurnEvent.tool_call_done(tc_id, tc_name, raw_args, param_descriptions)
 
             if chunk.usage:
                 last_usage = self._accumulate_chunk_usage(last_usage, chunk.usage)

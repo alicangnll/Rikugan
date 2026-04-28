@@ -65,6 +65,9 @@ class ChatView(QScrollArea):
         self._layout.addStretch()
         self.setWidget(self._container)
 
+        # Enable horizontal scrolling for "/" separators
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+
         # Track current assistant widget for streaming
         self._current_assistant: AssistantMessageWidget | None = None
         self._tool_widgets: dict[str, ToolCallWidget] = {}
@@ -283,7 +286,7 @@ class ChatView(QScrollArea):
         elif etype == TurnEventType.TOOL_CALL_DONE:
             existing_tw = self._tool_widgets.get(event.tool_call_id)
             if existing_tw is not None:
-                existing_tw.set_arguments(event.tool_args)
+                existing_tw.set_arguments(event.tool_args, event.parameter_descriptions)
         elif etype == TurnEventType.TOOL_RESULT:
             self._reset_tool_run()
             existing_tw = self._tool_widgets.get(event.tool_call_id)

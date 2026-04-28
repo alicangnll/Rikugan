@@ -57,6 +57,7 @@ class TurnEvent:
     plan_steps: list[str] | None = None
     plan_step_index: int = 0
     metadata: dict[str, Any] = field(default_factory=dict)
+    parameter_descriptions: dict[str, str] | None = None  # Parameter descriptions for tools
 
     @staticmethod
     def text_delta(text: str) -> TurnEvent:
@@ -83,12 +84,15 @@ class TurnEvent:
         )
 
     @staticmethod
-    def tool_call_done(tool_call_id: str, tool_name: str, args: str) -> TurnEvent:
+    def tool_call_done(
+        tool_call_id: str, tool_name: str, args: str, parameter_descriptions: dict[str, str] | None = None
+    ) -> TurnEvent:
         return TurnEvent(
             type=TurnEventType.TOOL_CALL_DONE,
             tool_call_id=tool_call_id,
             tool_name=tool_name,
             tool_args=args,
+            parameter_descriptions=parameter_descriptions,
         )
 
     @staticmethod

@@ -502,12 +502,13 @@ class ToolCallWidget(QFrame):
         return self._preview_label
 
     def _build_detail_section(self) -> QWidget:
-        """Build the expandable detail area (args + result)."""
+        """Build the expandable detail area (args + descriptions + result)."""
         self._detail_widget = QWidget()
         self._detail_layout = QVBoxLayout(self._detail_widget)
         self._detail_layout.setContentsMargins(28, 2, 0, 2)
         self._detail_layout.setSpacing(2)
 
+        # Args label (formatted JSON)
         self._args_label = QLabel()
         self._args_label.setObjectName("tool_content")
         self._args_label.setWordWrap(True)
@@ -518,6 +519,20 @@ class ToolCallWidget(QFrame):
             )
         )
         self._detail_layout.addWidget(self._args_label)
+
+        # Parameter descriptions label
+        self._descriptions_label = QLabel()
+        self._descriptions_label.setObjectName("tool_descriptions")
+        self._descriptions_label.setWordWrap(True)
+        self._descriptions_label.setTextInteractionFlags(
+            qt_flags(
+                Qt.TextInteractionFlag.TextSelectableByMouse,
+                Qt.TextInteractionFlag.TextSelectableByKeyboard,
+            )
+        )
+        self._descriptions_label.setStyleSheet("color: #9cdcfe; font-size: 10px; margin-top: 4px;")
+        self._descriptions_label.setVisible(False)
+        self._detail_layout.addWidget(self._descriptions_label)
 
         self._result_header = QLabel("Result:")
         self._result_header.setStyleSheet("color: #808080; font-size: 10px; font-weight: bold;")
@@ -554,7 +569,7 @@ class ToolCallWidget(QFrame):
         self._preview_label.setVisible(not self._expanded and bool(self._args_text))
         self._toggle_btn.setText("▼" if self._expanded else "▶")
 
-    def set_arguments(self, args_text: str) -> None:
+    def set_arguments(self, args_text: str, parameter_descriptions: dict[str, str] | None = None) -> None:
         self._args_text = args_text
         # Update summary
         summary = _format_tool_summary(self._tool_name, args_text)
@@ -567,6 +582,14 @@ class ToolCallWidget(QFrame):
         # Full args in detail area
         display = args_text[:_MAX_ARGS_DISPLAY] + "..." if len(args_text) > _MAX_ARGS_DISPLAY else args_text
         self._args_label.setText(display)
+
+        # Show parameter descriptions if available
+        if parameter_descriptions:
+            desc_lines = []
+            for param_name, description in parameter_descriptions.items():
+                desc_lines.append(f"• {param_name}: {description}")
+            self._descriptions_label.setText("\n".join(desc_lines))
+            self._descriptions_label.setVisible(True)
 
     def append_args_delta(self, delta: str) -> None:
         self._args_text += delta
