@@ -794,10 +794,11 @@ class SettingsDialog(QDialog):
 
         # Enable token limiter
         self._token_limiter_enabled_cb = QCheckBox("Enable Token Limiter")
-        self._token_limiter_enabled_cb.setChecked(True)
+        self._token_limiter_enabled_cb.setChecked(False)  # Default disabled
         self._token_limiter_enabled_cb.setToolTip(
             "Enforce token usage limits to prevent excessive API usage.\n"
-            "When enabled, requests exceeding the limits will be rejected."
+            "When enabled, requests exceeding the limits will be rejected.\n"
+            "NOTE: Token usage tracking is not yet implemented - this only sets limits."
         )
         form_layout.addRow("Token Limiter:", self._token_limiter_enabled_cb)
 
@@ -863,10 +864,13 @@ class SettingsDialog(QDialog):
         # Info text
         info_label = QLabel(
             "Token limits help control API costs and prevent excessive usage.\n"
-            "Adjust the limits based on your API plan and budget."
+            "Adjust the limits based on your API plan and budget.\n\n"
+            "NOTE: Token usage tracking is under development.\n"
+            "Current session usage is estimated and may not reflect actual usage.\n"
+            "Check your LLM provider dashboard for accurate usage statistics."
         )
         info_label.setWordWrap(True)
-        info_label.setStyleSheet("color: #888888; font-size: 11px;")
+        info_label.setStyleSheet("color: #ffaa00; font-size: 11px;")  # Yellow warning color
         form_layout.addRow(info_label)
 
         main_layout.addLayout(form_layout)
@@ -1039,8 +1043,12 @@ class SettingsDialog(QDialog):
 
                 reset_token_limiter()
 
+                log_debug(f"Token limiter settings saved: enabled={token_limiter_config.enabled}")
+                print(f"[Rikugan] Token limiter saved: enabled={token_limiter_config.enabled}, action={token_limiter_config.action}")
+
             except Exception as e:
                 log_error(f"Failed to save token limiter settings: {e}")
+                print(f"[Rikugan] Error saving token limiter: {e}")
 
         # Apply new tab settings
         self._skills_tab.apply_to_config(self._config)
@@ -1085,17 +1093,16 @@ class SettingsDialog(QDialog):
             session_tokens = limiter.get_session_tokens()
             remaining_tokens = limiter.get_remaining_tokens()
 
-            # Try to get real usage from config
-            input_tokens = session_tokens.get(TokenType.INPUT, 0)
-            output_tokens = session_tokens.get(TokenType.OUTPUT, 0)
-            total_tokens = input_tokens + output_tokens
-
             # Check if there's saved usage in config
             if hasattr(self._config, 'session_token_usage'):
                 saved_usage = self._config.session_token_usage
-                input_tokens = saved_usage.get('input', input_tokens)
-                output_tokens = saved_usage.get('output', output_tokens)
-                total_tokens = input_tokens + output_tokens
+                input_tokens = saved_usage.get('input', 0)
+                output_tokens = saved_usage.get('output', 0)
+            else:
+                input_tokens = session_tokens.get(TokenType.INPUT, 0)
+                output_tokens = session_tokens.get(TokenType.OUTPUT, 0)
+
+            total_tokens = input_tokens + output_tokens
 
             self._session_input_tokens_label.setText(f"{input_tokens:,}")
             self._session_output_tokens_label.setText(f"{output_tokens:,}")
