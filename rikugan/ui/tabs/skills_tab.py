@@ -16,6 +16,7 @@ from ..qt_compat import (
     QPushButton,
     QScrollArea,
     QTextEdit,
+    Qt,
     QVBoxLayout,
     QWidget,
 )
@@ -100,8 +101,8 @@ class SkillsTab(QWidget):
             cb.setChecked(skill.slug not in disabled_set)
             # Store skill data for later retrieval
             self._skill_details[skill.slug] = skill
-            # Connect click event to show description
-            cb.clicked.connect(lambda checked, s=skill.slug: self._on_skill_clicked(s, checked))
+            # Connect state change event to show description
+            cb.stateChanged.connect(lambda state, s=skill.slug: self._on_skill_state_changed(s, state))
             self._rikugan_checks[skill.slug] = cb
             layout.addWidget(cb)
 
@@ -149,8 +150,8 @@ class SkillsTab(QWidget):
             cb.setChecked(ext_id in enabled_set)
             # Store skill data for later retrieval
             self._skill_details[ext_id] = skill
-            # Connect click event to show description
-            cb.clicked.connect(lambda checked, s=ext_id: self._on_skill_clicked(s, checked))
+            # Connect state change event to show description
+            cb.stateChanged.connect(lambda state, s=ext_id: self._on_skill_state_changed(s, state))
             self._external_checks[ext_id] = cb
             layout.addWidget(cb)
 
@@ -162,8 +163,12 @@ class SkillsTab(QWidget):
             if ext_id.startswith(f"{source_key}:"):
                 checkbox.setChecked(checked)
 
-    def _on_skill_clicked(self, skill_id: str, checked: bool) -> None:
-        """Handle skill checkbox click - show skill description in text area."""
+    def _on_skill_state_changed(self, skill_id: str, state) -> None:
+        """Handle skill checkbox state change - show skill description in text area when checked."""
+        # Only show description when checkbox is checked
+        if state != Qt.CheckState.Checked.value:
+            return
+
         skill = self._skill_details.get(skill_id)
         if not skill:
             return
