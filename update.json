@@ -1,0 +1,21 @@
+{
+  "version": "1.2.2",
+  "release_date": "2026-04-29",
+  "changelog": [
+    "Added token limiter with configurable thresholds",
+    "Added auto-update mechanism with one-click update",
+    "Added mobile pentest skills (Android/iOS) with ADB/SSH automation",
+    "Added cloud mobile security assessment",
+    "Added automated exploit generation from crashes",
+    "Added application shielding bypass",
+    "Added mobile malware analysis",
+    "Updated GitHub repository to alicangnll/Rikugan",
+    "Added 9 new security skills for vulnerability hunting"
+  ],
+  "download_url": "https://github.com/alicangnll/Rikugan/archive/refs/heads/main.zip",
+  "min_compatible_version": "1.0.0",
+  "update_required": false,
+  "checksums": {
+    "sha256": "pending"
+  }
+}

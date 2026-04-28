@@ -32,6 +32,8 @@ from .qt_compat import (
     QVBoxLayout,
     QWidget,
 )
+from ..core.updater import Updater, UpdateInfo
+from ..core.token_limiter import TokenLimiter, TokenLimit, get_token_limiter
 
 _DEFAULT_MINIMAX_URL = "https://api.minimax.io/anthropic"
 _CUSTOM_PROVIDER_URL_PLACEHOLDER = "https://api.example.com/v1"
@@ -248,6 +250,14 @@ class SettingsDialog(QDialog):
         self._tabs.addTab(self._mcp_tab, "MCP")
         self._profiles_tab = ProfilesTab(self._config, service=self._service)
         self._tabs.addTab(self._profiles_tab, "Profiles")
+
+        # Tab: Token Limiter
+        token_limiter_tab = self._build_token_limiter_tab()
+        self._tabs.addTab(token_limiter_tab, "Token Limiter")
+
+        # Tab: Update
+        update_tab = self._build_update_tab()
+        self._tabs.addTab(update_tab, "Update")
 
         layout.addWidget(self._tabs)
 
@@ -776,6 +786,165 @@ class SettingsDialog(QDialog):
             return ""
         return password
 
+    def _build_token_limiter_tab(self) -> QWidget:
+        """Build the token limiter settings tab."""
+        widget = QWidget()
+        layout = QFormLayout()
+
+        # Enable token limiter
+        self._token_limiter_enabled_cb = QCheckBox("Enable Token Limiter")
+        self._token_limiter_enabled_cb.setChecked(True)
+        self._token_limiter_enabled_cb.setToolTip(
+            "Enforce token usage limits to prevent excessive API usage.\n"
+            "When enabled, requests exceeding the limits will be rejected."
+        )
+        layout.addRow("Token Limiter:", self._token_limiter_enabled_cb)
+
+        # Max input tokens
+        self._max_input_tokens_spin = QSpinBox()
+        self._max_input_tokens_spin.setRange(1000, 1000000)
+        self._max_input_tokens_spin.setValue(100000)
+        self._max_input_tokens_spin.setSuffix(" tokens")
+        self._max_input_tokens_spin.setToolTip("Maximum input tokens per request")
+        layout.addRow("Max Input Tokens:", self._max_input_tokens_spin)
+
+        # Max output tokens
+        self._max_output_tokens_spin = QSpinBox()
+        self._max_output_tokens_spin.setRange(1000, 1000000)
+        self._max_output_tokens_spin.setValue(50000)
+        self._max_output_tokens_spin.setSuffix(" tokens")
+        self._max_output_tokens_spin.setToolTip("Maximum output tokens per request")
+        layout.addRow("Max Output Tokens:", self._max_output_tokens_spin)
+
+        # Max total tokens
+        self._max_total_tokens_spin = QSpinBox()
+        self._max_total_tokens_spin.setRange(1000, 10000000)
+        self._max_total_tokens_spin.setValue(200000)
+        self._max_total_tokens_spin.setSuffix(" tokens")
+        self._max_total_tokens_spin.setToolTip("Maximum total tokens per request")
+        layout.addRow("Max Total Tokens:", self._max_total_tokens_spin)
+
+        # Action when limit exceeded
+        self._token_limiter_action_combo = QComboBox()
+        self._token_limiter_action_combo.addItems(["error", "warn", "none"])
+        self._token_limiter_action_combo.setCurrentText("error")
+        self._token_limiter_action_combo.setToolTip(
+            "Action to take when token limit is exceeded:\n"
+            "  error: Raise an error and stop the request\n"
+            "  warn: Show a warning but continue\n"
+            "  none: Ignore the limit"
+        )
+        layout.addRow("On Limit Exceeded:", self._token_limiter_action_combo)
+
+        # Session usage display
+        usage_group = QGroupBox("Session Token Usage")
+        usage_layout = QFormLayout()
+
+        self._session_input_tokens_label = QLabel("0")
+        self._session_output_tokens_label = QLabel("0")
+        self._session_total_tokens_label = QLabel("0")
+        self._session_remaining_tokens_label = QLabel("0")
+
+        usage_layout.addRow("Input Tokens:", self._session_input_tokens_label)
+        usage_layout.addRow("Output Tokens:", self._session_output_tokens_label)
+        usage_layout.addRow("Total Tokens:", self._session_total_tokens_label)
+        usage_layout.addRow("Remaining Tokens:", self._session_remaining_tokens_label)
+
+        usage_group.setLayout(usage_layout)
+        layout.addRow(usage_group)
+
+        # Reset button
+        reset_btn = QPushButton("Reset Session Usage")
+        reset_btn.setToolTip("Reset the session token usage counters to zero")
+        reset_btn.clicked.connect(self._on_reset_token_usage)
+        layout.addRow(reset_btn)
+
+        # Info text
+        info_label = QLabel(
+            "Token limits help control API costs and prevent excessive usage.\n"
+            "Adjust the limits based on your API plan and budget."
+        )
+        info_label.setWordWrap(True)
+        info_label.setStyleSheet("color: #888888; font-size: 11px;")
+        layout.addRow(info_label)
+
+        layout.addStretch()
+        widget.setLayout(layout)
+
+        # Load current settings
+        self._load_token_limiter_settings()
+
+        return widget
+
+    def _build_update_tab(self) -> QWidget:
+        """Build the update settings tab."""
+        widget = QWidget()
+        layout = QVBoxLayout()
+
+        # Current version info
+        version_layout = QHBoxLayout()
+        version_label = QLabel("Current Version:")
+        version_label.setStyleSheet("font-weight: bold;")
+        self._current_version_label = QLabel("Loading...")
+        version_layout.addWidget(version_label)
+        version_layout.addWidget(self._current_version_label)
+        version_layout.addStretch()
+        layout.addLayout(version_layout)
+
+        # Update status
+        status_layout = QHBoxLayout()
+        status_label = QLabel("Update Status:")
+        status_label.setStyleSheet("font-weight: bold;")
+        self._update_status_label = QLabel("Not checked")
+        status_layout.addWidget(status_label)
+        status_layout.addWidget(self._update_status_label)
+        status_layout.addStretch()
+        layout.addLayout(status_layout)
+
+        # Check for updates button
+        self._check_update_btn = QPushButton("Check for Updates")
+        self._check_update_btn.setToolTip("Check GitHub for the latest Rikugan version")
+        self._check_update_btn.clicked.connect(self._on_check_updates)
+        layout.addWidget(self._check_update_btn)
+
+        # Update button (initially disabled)
+        self._update_btn = QPushButton("Update Rikugan")
+        self._update_btn.setEnabled(False)
+        self._update_btn.setToolTip("Download and install the latest version")
+        self._update_btn.clicked.connect(self._on_update)
+        layout.addWidget(self._update_btn)
+
+        # Changelog section
+        changelog_label = QLabel("What's New:")
+        changelog_label.setStyleSheet("font-weight: bold; margin-top: 20px;")
+        layout.addWidget(changelog_label)
+
+        self._changelog_text = QLabel()
+        self._changelog_text.setWordWrap(True)
+        self._changelog_text.setTextAlignment(Qt.AlignmentFlag.AlignTop)
+        self._changelog_text.setStyleSheet(
+            "background: #2d2d2d; color: #d4d4d4; padding: 10px; "
+            "border: 1px solid #3c3c3c; font-family: monospace; font-size: 11px;"
+        )
+        layout.addWidget(self._changelog_text)
+
+        # Info text
+        info_label = QLabel(
+            "Updates are downloaded from GitHub and installed automatically.\n"
+            "A backup is created before updating, so you can rollback if needed."
+        )
+        info_label.setWordWrap(True)
+        info_label.setStyleSheet("color: #888888; font-size: 11px; margin-top: 20px;")
+        layout.addWidget(info_label)
+
+        layout.addStretch()
+        widget.setLayout(layout)
+
+        # Load current version
+        self._load_current_version()
+
+        return widget
+
     def _on_accept(self) -> None:
         api_key = self._api_key_edit.text().strip()
 
@@ -839,9 +1008,225 @@ class SettingsDialog(QDialog):
         self._config.encrypt_api_keys = wants_encrypt
         self.encryption_password = password  # consumed by caller's save()
 
+        # Save token limiter settings
+        if hasattr(self, '_token_limiter_enabled_cb'):
+            try:
+                token_limiter_config = TokenLimit(
+                    max_input_tokens=self._max_input_tokens_spin.value(),
+                    max_output_tokens=self._max_output_tokens_spin.value(),
+                    max_total_tokens=self._max_total_tokens_spin.value(),
+                    max_cache_read_tokens=100000,  # Default for cache
+                    max_cache_creation_tokens=50000,  # Default for cache
+                    enabled=self._token_limiter_enabled_cb.isChecked(),
+                    action=self._token_limiter_action_combo.currentText(),
+                )
+
+                # Convert to dict for JSON serialization
+                self._config.token_limiter = {
+                    "max_input_tokens": token_limiter_config.max_input_tokens,
+                    "max_output_tokens": token_limiter_config.max_output_tokens,
+                    "max_total_tokens": token_limiter_config.max_total_tokens,
+                    "max_cache_read_tokens": token_limiter_config.max_cache_read_tokens,
+                    "max_cache_creation_tokens": token_limiter_config.max_cache_creation_tokens,
+                    "enabled": token_limiter_config.enabled,
+                    "action": token_limiter_config.action,
+                }
+
+                # Reset token limiter with new config
+                from ..core.token_limiter import reset_token_limiter
+
+                reset_token_limiter()
+
+            except Exception as e:
+                log_error(f"Failed to save token limiter settings: {e}")
+
         # Apply new tab settings
         self._skills_tab.apply_to_config(self._config)
         self._mcp_tab.apply_to_config(self._config)
         self._profiles_tab.apply_to_config(self._config)
 
         self.accept()
+
+    def _load_token_limiter_settings(self) -> None:
+        """Load token limiter settings from config."""
+        try:
+            limiter = get_token_limiter()
+            config = limiter.config
+            
+            self._token_limiter_enabled_cb.setChecked(config.enabled)
+            self._max_input_tokens_spin.setValue(config.max_input_tokens)
+            self._max_output_tokens_spin.setValue(config.max_output_tokens)
+            self._max_total_tokens_spin.setValue(config.max_total_tokens)
+            self._token_limiter_action_combo.setCurrentText(config.action)
+            
+            # Update session usage display
+            self._update_token_usage_display()
+        except Exception as e:
+            log_error(f"Failed to load token limiter settings: {e}")
+
+    def _load_current_version(self) -> None:
+        """Load and display current Rikugan version."""
+        try:
+            updater = Updater()
+            version = updater._get_current_version()
+            self._current_version_label.setText(version)
+        except Exception as e:
+            self._current_version_label.setText("Unknown")
+            log_error(f"Failed to load version: {e}")
+
+    def _load_token_limiter_settings(self) -> None:
+        """Load token limiter settings from config."""
+        try:
+            limiter = get_token_limiter()
+            config = limiter.config
+            
+            self._token_limiter_enabled_cb.setChecked(config.enabled)
+            self._max_input_tokens_spin.setValue(config.max_input_tokens)
+            self._max_output_tokens_spin.setValue(config.max_output_tokens)
+            self._max_total_tokens_spin.setValue(config.max_total_tokens)
+            self._token_limiter_action_combo.setCurrentText(config.action)
+            
+            # Update session usage display
+            self._update_token_usage_display()
+            
+        except Exception as e:
+            log_error(f"Failed to load token limiter settings: {e}")
+
+    def _update_token_usage_display(self) -> None:
+        """Update the token usage display."""
+        try:
+            limiter = get_token_limiter()
+            session_tokens = limiter.get_session_tokens()
+            remaining_tokens = limiter.get_remaining_tokens()
+            
+            from ..core.token_limiter import TokenType
+            
+            self._session_input_tokens_label.setText(
+                f"{session_tokens[TokenType.INPUT]:,}"
+            )
+            self._session_output_tokens_label.setText(
+                f"{session_tokens[TokenType.OUTPUT]:,}"
+            )
+            self._session_total_tokens_label.setText(
+                f"{sum(session_tokens.values()):,}"
+            )
+            self._session_remaining_tokens_label.setText(
+                f"{remaining_tokens[TokenType.TOTAL]:,}"
+            )
+            
+        except Exception as e:
+            log_error(f"Failed to update token usage display: {e}")
+
+    def _on_reset_token_usage(self) -> None:
+        """Reset session token usage."""
+        try:
+            limiter = get_token_limiter()
+            limiter.reset_session_tokens()
+            self._update_token_usage_display()
+            log_debug("Session token usage reset")
+        except Exception as e:
+            log_error(f"Failed to reset token usage: {e}")
+
+    def _on_check_updates(self) -> None:
+        """Check for Rikugan updates."""
+        self._check_update_btn.setEnabled(False)
+        self._update_status_label.setText("Checking...")
+        
+        # Run update check in background thread
+        def _check_in_thread():
+            try:
+                updater = Updater()
+                update_info = updater.check_for_updates()
+                
+                # Update UI on main thread using QTimer
+                if update_info and update_info.is_newer:
+                    self._update_check_result(update_info, None)
+                else:
+                    self._update_check_result(update_info, None if update_info else "No update info available")
+            except Exception as e:
+                log_error(f"Failed to check for updates: {e}")
+                self._update_check_result(None, str(e))
+        
+        threading.Thread(target=_check_in_thread, daemon=True).start()
+
+    def _on_update(self) -> None:
+        """Install Rikugan update."""
+        self._update_btn.setEnabled(False)
+        self._update_status_label.setText("Downloading update...")
+        
+        # Run update in background thread
+        def _update_in_thread():
+            try:
+                updater = Updater()
+                update_info = updater.check_for_updates()
+                
+                if update_info is None:
+                    self._update_install_result(None, "No update info available")
+                    return
+                
+                self._update_install_result(update_info, "Downloading...")
+                
+                download_path = updater.download_update(update_info)
+                if download_path is None:
+                    self._update_install_result(None, "Download failed")
+                    return
+                
+                self._update_install_result(update_info, "Installing...")
+                
+                success = updater.install_update(download_path)
+                
+                if success:
+                    self._update_install_result(update_info, "Update installed successfully")
+                    self._load_current_version()
+                else:
+                    self._update_install_result(None, "Installation failed")
+                    
+            except Exception as e:
+                log_error(f"Failed to install update: {e}")
+                self._update_install_result(None, str(e))
+        
+        threading.Thread(target=_update_in_thread, daemon=True).start()
+
+    def _update_check_result(self, update_info: UpdateInfo | None, error: str | None) -> None:
+        """Handle update check result (called from background thread)."""
+        self._check_update_btn.setEnabled(True)
+        
+        if error:
+            self._update_status_label.setText(f"Error: {error}")
+            self._update_btn.setEnabled(False)
+        elif update_info:
+            if update_info.is_newer:
+                self._update_status_label.setText(
+                    f"Update available: {update_info.current_version} → {update_info.latest_version}"
+                )
+                self._update_btn.setEnabled(True)
+                
+                # Display changelog
+                changelog_text = "\n".join(f"  • {item}" for item in update_info.changelog)
+                self._changelog_text.setText(changelog_text)
+            else:
+                self._update_status_label.setText("Already up to date")
+                self._update_btn.setEnabled(False)
+        else:
+            self._update_status_label.setText("Update check complete")
+            self._update_btn.setEnabled(False)
+
+    def _update_install_result(self, update_info: UpdateInfo | None, message: str) -> None:
+        """Handle update installation result (called from background thread)."""
+        if update_info and message == "Update installed successfully":
+            self._update_status_label.setText(
+                f"Updated to {update_info.latest_version}! Please restart IDA Pro."
+            )
+            self._update_btn.setEnabled(False)
+        elif error:
+            self._update_status_label.setText(f"Error: {message}")
+            self._update_btn.setEnabled(True)
+        else:
+            self._update_status_label.setText(message)
+            self._update_btn.setEnabled(True)
+
+    def customEvent(self, event) -> None:
+        """Handle custom events for update results."""
+        # Update checking uses QTimer-based polling, so we don't need this
+        # but we keep it for future use
+        super().customEvent(event)
