@@ -7,6 +7,7 @@ from rikugan.core.thread_safety import idasync
 from rikugan.tools.registry import ToolRegistry
 
 from . import (
+    advanced_decomp,
     annotations,
     database,
     decompiler,
@@ -32,6 +33,7 @@ _TOOL_MODULES = (
     types_tools,
     scripting,
     microcode,
+    advanced_decomp,
 )
 
 

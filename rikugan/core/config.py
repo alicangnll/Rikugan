@@ -84,6 +84,9 @@ class RikuganConfig:
     # Token limiter
     token_limiter: dict[str, Any] = field(default_factory=dict)
 
+    # Session token usage
+    session_token_usage: dict[str, int | float] = field(default_factory=dict)
+
     _config_dir: str = field(default_factory=_default_config_dir, repr=False)
 
     @property

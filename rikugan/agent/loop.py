@@ -461,25 +461,29 @@ class AgentLoop:
         self._session_cache_read_tokens += usage.cache_read_tokens
         self._session_cache_creation_tokens += usage.cache_creation_tokens
 
-        log_debug(f"Session tokens: input={self._session_input_tokens}, "
-                  f"output={self._session_output_tokens}, "
-                  f"cache_read={self._session_cache_read_tokens}, "
-                  f"cache_creation={self._session_cache_creation_tokens}")
+        log_debug(
+            f"Session tokens: input={self._session_input_tokens}, "
+            f"output={self._session_output_tokens}, "
+            f"cache_read={self._session_cache_read_tokens}, "
+            f"cache_creation={self._session_cache_creation_tokens}"
+        )
 
     def _save_session_token_usage(self) -> None:
         """Save session token usage to config for UI display."""
         try:
-            if not hasattr(self.config, 'session_token_usage'):
+            if not hasattr(self.config, "session_token_usage"):
                 self.config.session_token_usage = {}
 
             self.config.session_token_usage = {
-                'input': self._session_input_tokens,
-                'output': self._session_output_tokens,
-                'cache_read': self._session_cache_read_tokens,
-                'cache_creation': self._session_cache_creation_tokens,
-                'total': self._session_input_tokens + self._session_output_tokens +
-                        self._session_cache_read_tokens + self._session_cache_creation_tokens,
-                'last_updated': time.time()
+                "input": self._session_input_tokens,
+                "output": self._session_output_tokens,
+                "cache_read": self._session_cache_read_tokens,
+                "cache_creation": self._session_cache_creation_tokens,
+                "total": self._session_input_tokens
+                + self._session_output_tokens
+                + self._session_cache_read_tokens
+                + self._session_cache_creation_tokens,
+                "last_updated": time.time(),
             }
 
             log_info(f"Session token usage saved: {self.config.session_token_usage['total']:,} total tokens")

@@ -8,6 +8,7 @@ from __future__ import annotations
 from ...core.thread_safety import idasync
 from ...tools.registry import ToolRegistry
 from . import (  # type: ignore[assignment]
+    advanced_decomp,
     annotations,
     database,
     decompiler,
@@ -37,6 +38,7 @@ _TOOL_MODULES = (
     il,
     il_analysis,
     il_transform,
+    advanced_decomp,
 )
 
 

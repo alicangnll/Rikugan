@@ -8,7 +8,7 @@ from typing import Any
 
 from ..core.config import RikuganConfig
 from ..core.logging import log_debug, log_error
-from ..core.token_limiter import TokenLimit, get_token_limiter
+from ..core.token_limiter import get_token_limiter
 from ..core.types import ModelInfo
 from ..core.updater import UpdateInfo, Updater
 from ..providers.auth_cache import resolve_auth_cached
@@ -1049,6 +1049,7 @@ class SettingsDialog(QDialog):
                 log_error(f"Failed to save token limiter settings: {e}")
                 print(f"[Rikugan] Error saving token limiter: {e}")
                 import traceback
+
                 traceback.print_exc()
 
         # Apply new tab settings
@@ -1061,18 +1062,22 @@ class SettingsDialog(QDialog):
     def _load_token_limiter_settings(self) -> None:
         """Load token limiter settings from config."""
         try:
-            print(f"[Rikugan] _load_token_limiter_settings called")
+            print("[Rikugan] _load_token_limiter_settings called")
             print(f"[Rikugan] Config has token_limiter: {hasattr(self._config, 'token_limiter')}")
 
             # Read directly from config, not from limiter instance
             # to avoid cache issues
-            if hasattr(self._config, 'token_limiter') and self._config.token_limiter and len(self._config.token_limiter) > 0:
+            if (
+                hasattr(self._config, "token_limiter")
+                and self._config.token_limiter
+                and len(self._config.token_limiter) > 0
+            ):
                 tl_config = self._config.token_limiter
-                enabled = tl_config.get('enabled', False)
-                max_input = tl_config.get('max_input_tokens', 100000)
-                max_output = tl_config.get('max_output_tokens', 50000)
-                max_total = tl_config.get('max_total_tokens', 200000)
-                action = tl_config.get('action', 'error')
+                enabled = tl_config.get("enabled", False)
+                max_input = tl_config.get("max_input_tokens", 100000)
+                max_output = tl_config.get("max_output_tokens", 50000)
+                max_total = tl_config.get("max_total_tokens", 200000)
+                action = tl_config.get("action", "error")
                 print(f"[Rikugan] Config token_limiter: {tl_config}")
             else:
                 # Default values
@@ -1080,8 +1085,8 @@ class SettingsDialog(QDialog):
                 max_input = 100000
                 max_output = 50000
                 max_total = 200000
-                action = 'error'
-                print(f"[Rikugan] Using default values")
+                action = "error"
+                print("[Rikugan] Using default values")
 
             print(f"[Rikugan] Setting checkbox to: enabled={enabled}")
             self._token_limiter_enabled_cb.setChecked(enabled)
@@ -1099,6 +1104,7 @@ class SettingsDialog(QDialog):
             log_error(f"Failed to load token limiter settings: {e}")
             print(f"[Rikugan] Error loading token limiter settings: {e}")
             import traceback
+
             traceback.print_exc()
 
     def _load_current_version(self) -> None:
@@ -1121,10 +1127,10 @@ class SettingsDialog(QDialog):
             remaining_tokens = limiter.get_remaining_tokens()
 
             # Check if there's saved usage in config
-            if hasattr(self._config, 'session_token_usage'):
+            if hasattr(self._config, "session_token_usage"):
                 saved_usage = self._config.session_token_usage
-                input_tokens = saved_usage.get('input', 0)
-                output_tokens = saved_usage.get('output', 0)
+                input_tokens = saved_usage.get("input", 0)
+                output_tokens = saved_usage.get("output", 0)
             else:
                 input_tokens = session_tokens.get(TokenType.INPUT, 0)
                 output_tokens = session_tokens.get(TokenType.OUTPUT, 0)
@@ -1136,7 +1142,9 @@ class SettingsDialog(QDialog):
             self._session_total_tokens_label.setText(f"{total_tokens:,}")
             self._session_remaining_tokens_label.setText(f"{remaining_tokens.get(TokenType.TOTAL, 0):,}")
 
-            print(f"[Rikugan] Token usage display: Input={input_tokens:,}, Output={output_tokens:,}, Total={total_tokens:,}")
+            print(
+                f"[Rikugan] Token usage display: Input={input_tokens:,}, Output={output_tokens:,}, Total={total_tokens:,}"
+            )
 
         except Exception as e:
             log_error(f"Failed to update token usage display: {e}")
@@ -1180,15 +1188,15 @@ class SettingsDialog(QDialog):
 
     def _process_update_check_result(self) -> None:
         """Process pending update check result on main thread."""
-        if not hasattr(self, '_pending_update_info'):
+        if not hasattr(self, "_pending_update_info"):
             return
 
         update_info = self._pending_update_info
         error = self._pending_update_error
 
         # Clear pending state
-        delattr(self, '_pending_update_info')
-        delattr(self, '_pending_update_error')
+        delattr(self, "_pending_update_info")
+        delattr(self, "_pending_update_error")
 
         self._update_check_result(update_info, error)
 

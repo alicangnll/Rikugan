@@ -77,7 +77,8 @@ class Updater:
             # Try to use IDA's msg function if available
             try:
                 import ida_kernwin
-                ida_kernwin.msg(f"[Rikugan] Checking for updates...\n")
+
+                ida_kernwin.msg("[Rikugan] Checking for updates...\n")
             except ImportError:
                 pass
 
@@ -108,6 +109,7 @@ class Updater:
                 log_info(f"Update available: {self.current_version} → {latest_version}")
                 try:
                     import ida_kernwin
+
                     ida_kernwin.msg(f"[Rikugan] Update available: {self.current_version} → {latest_version}\n")
                 except ImportError:
                     pass
@@ -117,7 +119,8 @@ class Updater:
                 log_info("Already up to date")
                 try:
                     import ida_kernwin
-                    ida_kernwin.msg(f"[Rikugan] Already up to date\n")
+
+                    ida_kernwin.msg("[Rikugan] Already up to date\n")
                 except ImportError:
                     pass
 
@@ -127,6 +130,7 @@ class Updater:
             log_error(f"Failed to check for updates: {e}")
             try:
                 import ida_kernwin
+
                 ida_kernwin.msg(f"[Rikugan] Update check failed: {e}\n")
             except ImportError:
                 pass
@@ -135,6 +139,7 @@ class Updater:
             log_error(f"Error checking for updates: {e}")
             try:
                 import ida_kernwin
+
                 ida_kernwin.msg(f"[Rikugan] Update error: {e}\n")
             except ImportError:
                 pass
@@ -333,13 +338,13 @@ class Updater:
                 shutil.rmtree(dst)
             # If it's a file, remove it
             else:
-                log.info(f"Removing file: {dst}")
+                log_info(f"Removing file: {dst}")
                 dst.unlink()
 
         # Copy the directory
         log_info(f"Starting copytree from {src} to {dst}")
         shutil.copytree(src, dst, symlinks=True)
-        log_info(f"Copy completed successfully")
+        log_info("Copy completed successfully")
 
     def _compare_versions(self, v1: str, v2: str) -> int:
         """Compare two version strings.

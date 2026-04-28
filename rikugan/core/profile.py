@@ -126,7 +126,7 @@ EXPLOIT_DEV_PROFILE = AnalysisProfile(
     custom_filters=[
         "Enable detailed assembly analysis",
         "Allow memory corruption techniques",
-        "Include shellcode analysis tools"
+        "Include shellcode analysis tools",
     ],
     preferred_model="claude-sonnet-4-20250514",  # Smartest for exploit dev
     preferred_temperature=0.1,  # Low temp for precision
@@ -140,7 +140,7 @@ FIRMWARE_ANALYSIS_PROFILE = AnalysisProfile(
     custom_filters=[
         "Handle unknown architectures",
         "Analyze binary blobs without structure",
-        "Enable embedded system analysis"
+        "Enable embedded system analysis",
     ],
     denied_tools=[
         "debugger_breakpoint",  # Firmware can't be debugged live
@@ -153,11 +153,7 @@ FIRMWARE_ANALYSIS_PROFILE = AnalysisProfile(
 NETWORK_ANALYSIS_PROFILE = AnalysisProfile(
     name="network-analysis",
     description="Network protocol analysis - packet parsing, protocol reverse engineering",
-    custom_filters=[
-        "Focus on protocol parsing",
-        "Analyze network-related functions",
-        "Include socket/API analysis"
-    ],
+    custom_filters=["Focus on protocol parsing", "Analyze network-related functions", "Include socket/API analysis"],
     ioc_filters={
         "ipv4": True,
         "ipv6": True,
@@ -172,11 +168,7 @@ NETWORK_ANALYSIS_PROFILE = AnalysisProfile(
 CRYPTO_ANALYSIS_PROFILE = AnalysisProfile(
     name="crypto-analysis",
     description="Cryptography analysis - algorithm identification, math operations",
-    custom_filters=[
-        "Focus on crypto primitives",
-        "Analyze mathematical operations",
-        "Include constant detection"
-    ],
+    custom_filters=["Focus on crypto primitives", "Analyze mathematical operations", "Include constant detection"],
     denied_tools=[
         "string_extraction",  # Less relevant for crypto
     ],
@@ -191,7 +183,7 @@ BINARY_PATCHING_PROFILE = AnalysisProfile(
     custom_filters=[
         "Enable binary modification tools",
         "Allow patching and modification",
-        "Include code generation assistance"
+        "Include code generation assistance",
     ],
     preferred_model="claude-sonnet-4-20250514",
     preferred_temperature=0.3,  # Medium temp for creative patching
@@ -202,11 +194,7 @@ BINARY_PATCHING_PROFILE = AnalysisProfile(
 DEEP_REVERSE_PROFILE = AnalysisProfile(
     name="deep-reverse",
     description="Deep reverse engineering - maximum analysis depth, long sessions",
-    custom_filters=[
-        "Enable comprehensive analysis",
-        "Allow extended exploration",
-        "Include cross-reference analysis"
-    ],
+    custom_filters=["Enable comprehensive analysis", "Allow extended exploration", "Include cross-reference analysis"],
     preferred_model="claude-sonnet-4-20250514",
     preferred_max_tokens=24000,  # Max tokens for deep analysis
     preferred_context_window=200000,  # Max context window
@@ -220,7 +208,7 @@ MOBILE_PENTEST_PROFILE = AnalysisProfile(
         "Focus on mobile frameworks",
         "Analyze Dalvik/ART bytecode",
         "Include iOS Mach-O analysis",
-        "Enable mobile-specific security checks"
+        "Enable mobile-specific security checks",
     ],
     ioc_filters={
         "domains": True,
