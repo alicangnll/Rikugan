@@ -1017,38 +1017,39 @@ class SettingsDialog(QDialog):
         # Save token limiter settings
         if hasattr(self, "_token_limiter_enabled_cb"):
             try:
-                token_limiter_config = TokenLimit(
-                    max_input_tokens=self._max_input_tokens_spin.value(),
-                    max_output_tokens=self._max_output_tokens_spin.value(),
-                    max_total_tokens=self._max_total_tokens_spin.value(),
-                    max_cache_read_tokens=100000,  # Default for cache
-                    max_cache_creation_tokens=50000,  # Default for cache
-                    enabled=self._token_limiter_enabled_cb.isChecked(),
-                    action=self._token_limiter_action_combo.currentText(),
-                )
+                enabled = self._token_limiter_enabled_cb.isChecked()
+                max_input = self._max_input_tokens_spin.value()
+                max_output = self._max_output_tokens_spin.value()
+                max_total = self._max_total_tokens_spin.value()
+                action = self._token_limiter_action_combo.currentText()
+
+                print(f"[Rikugan] Saving token limiter: enabled={enabled}, action={action}, max_total={max_total}")
 
                 # Convert to dict for JSON serialization
                 self._config.token_limiter = {
-                    "max_input_tokens": token_limiter_config.max_input_tokens,
-                    "max_output_tokens": token_limiter_config.max_output_tokens,
-                    "max_total_tokens": token_limiter_config.max_total_tokens,
-                    "max_cache_read_tokens": token_limiter_config.max_cache_read_tokens,
-                    "max_cache_creation_tokens": token_limiter_config.max_cache_creation_tokens,
-                    "enabled": token_limiter_config.enabled,
-                    "action": token_limiter_config.action,
+                    "max_input_tokens": max_input,
+                    "max_output_tokens": max_output,
+                    "max_total_tokens": max_total,
+                    "max_cache_read_tokens": 100000,  # Default for cache
+                    "max_cache_creation_tokens": 50000,  # Default for cache
+                    "enabled": enabled,
+                    "action": action,
                 }
+
+                print(f"[Rikugan] Config token_limiter set: {self._config.token_limiter}")
 
                 # Reset token limiter with new config
                 from ..core.token_limiter import reset_token_limiter
 
                 reset_token_limiter()
 
-                log_debug(f"Token limiter settings saved: enabled={token_limiter_config.enabled}")
-                print(f"[Rikugan] Token limiter saved: enabled={token_limiter_config.enabled}, action={token_limiter_config.action}")
+                log_debug(f"Token limiter settings saved: enabled={enabled}")
 
             except Exception as e:
                 log_error(f"Failed to save token limiter settings: {e}")
                 print(f"[Rikugan] Error saving token limiter: {e}")
+                import traceback
+                traceback.print_exc()
 
         # Apply new tab settings
         self._skills_tab.apply_to_config(self._config)
@@ -1060,19 +1061,36 @@ class SettingsDialog(QDialog):
     def _load_token_limiter_settings(self) -> None:
         """Load token limiter settings from config."""
         try:
-            limiter = get_token_limiter()
-            config = limiter.config
+            # Read directly from config, not from limiter instance
+            # to avoid cache issues
+            if hasattr(self._config, 'token_limiter') and self._config.token_limiter:
+                tl_config = self._config.token_limiter
+                enabled = tl_config.get('enabled', False)
+                max_input = tl_config.get('max_input_tokens', 100000)
+                max_output = tl_config.get('max_output_tokens', 50000)
+                max_total = tl_config.get('max_total_tokens', 200000)
+                action = tl_config.get('action', 'error')
+            else:
+                # Default values
+                enabled = False
+                max_input = 100000
+                max_output = 50000
+                max_total = 200000
+                action = 'error'
 
-            self._token_limiter_enabled_cb.setChecked(config.enabled)
-            self._max_input_tokens_spin.setValue(config.max_input_tokens)
-            self._max_output_tokens_spin.setValue(config.max_output_tokens)
-            self._max_total_tokens_spin.setValue(config.max_total_tokens)
-            self._token_limiter_action_combo.setCurrentText(config.action)
+            self._token_limiter_enabled_cb.setChecked(enabled)
+            self._max_input_tokens_spin.setValue(max_input)
+            self._max_output_tokens_spin.setValue(max_output)
+            self._max_total_tokens_spin.setValue(max_total)
+            self._token_limiter_action_combo.setCurrentText(action)
+
+            print(f"[Rikugan] Loaded token limiter settings: enabled={enabled}, action={action}")
 
             # Update session usage display
             self._update_token_usage_display()
         except Exception as e:
             log_error(f"Failed to load token limiter settings: {e}")
+            print(f"[Rikugan] Error loading token limiter settings: {e}")
 
     def _load_current_version(self) -> None:
         """Load and display current Rikugan version."""
