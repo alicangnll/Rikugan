@@ -1128,16 +1128,35 @@ class SettingsDialog(QDialog):
             try:
                 updater = Updater()
                 update_info = updater.check_for_updates()
-                error = None if update_info else "No update info available"
+
+                # Store result for UI update
+                self._pending_update_info = update_info
+                self._pending_update_error = None if update_info else "No update info available"
 
                 # Schedule UI update on main thread
-                QTimer.singleShot(0, lambda ui=update_info, er=error: self._update_check_result(ui, er))
+                QTimer.singleShot(0, self._process_update_check_result)
             except Exception as e:
                 error_msg = str(e)
                 log_error(f"Failed to check for updates: {error_msg}")
-                QTimer.singleShot(0, lambda msg=error_msg: self._update_check_result(None, msg))
+                self._pending_update_info = None
+                self._pending_update_error = error_msg
+                QTimer.singleShot(0, self._process_update_check_result)
 
         threading.Thread(target=_check_in_thread, daemon=True).start()
+
+    def _process_update_check_result(self) -> None:
+        """Process pending update check result on main thread."""
+        if not hasattr(self, '_pending_update_info'):
+            return
+
+        update_info = self._pending_update_info
+        error = self._pending_update_error
+
+        # Clear pending state
+        delattr(self, '_pending_update_info')
+        delattr(self, '_pending_update_error')
+
+        self._update_check_result(update_info, error)
 
     def _on_update(self) -> None:
         """Install Rikugan update."""
