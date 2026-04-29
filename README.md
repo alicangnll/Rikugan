@@ -40,6 +40,24 @@ rikugan-cli analyze /path/to/binary
 rikugan-cli chat
 ```
 
+**JADX CLI (Android APK Analysis):**
+```bash
+# Analyze Android APKs with JADX integration
+python rikugan_jadx.py analyze app.apk -o ./decompiled
+
+# Search for strings in decompiled code
+python rikugan_jadx.py search app.apk "API_KEY"
+
+# Show package structure
+python rikugan_jadx.py structure app.apk
+
+# Analyze specific class
+python rikugan_jadx.py class app.apk com.example.MainActivity
+
+# Interactive AI mode for APK analysis
+python rikugan_jadx.py interactive app.apk
+```
+
 ## Install
 
 Auto-detects IDA Pro, Binary Ninja, or both.
@@ -123,6 +141,43 @@ The enhanced **Memory Corruption** skill provides comprehensive coverage of mode
 |:--:|
 |~3x speed of the workflow, original process took ~4:30 min|
 
+**🔥 NEW: JADX Integration - Android APK Analysis** — v1.2.5+!
+
+Comprehensive Android APK reverse engineering with JADX decompiler integration:
+
+- **APK Decompilation** — Automatic decompilation to Java source code using JADX
+- **Package Structure Analysis** — Complete package hierarchy, component detection, class/method counting
+- **Manifest Parsing** — Extract permissions, components, version info, SDK requirements
+- **String Search** — Search decompiled Java sources for API keys, endpoints, credentials
+- **Class Analysis** — Analyze dependencies, methods, fields, inheritance hierarchy
+- **Native Library Detection** — Find and analyze .so files across different architectures
+- **Security Assessment** — Detect debuggable builds, hardcoded secrets, insecure storage
+- **Malware Analysis** — Identify suspicious permissions, C2 communication, obfuscation techniques
+
+**CLI Usage:**
+```bash
+# Analyze APK structure
+python rikugan_jadx.py analyze app.apk -o ./decompiled
+
+# Search for API endpoints
+python rikugan_jadx.py search app.apk "http://"
+
+# Analyze specific class
+python rikugan_jadx.py class app.apk com.example.MainActivity
+
+# Interactive AI mode
+python rikugan_jadx.py interactive app.apk
+```
+
+**Skill Integration:**
+```
+/jadx Analyze this APK at /path/to/app.apk
+/jadx What permissions does this app request?
+/jadx Find the MainActivity class
+/jadx Search for hardcoded API keys
+/jadx Check for native libraries
+```
+
 **Memory** — Findings are saved to `RIKUGAN.md` next to your database, persisting across sessions.
 
 **Skills & MCP** — 42+ total skills (33 built-in + 9 external), custom skill support, and MCP server integration. Reuse skills and MCP servers from Claude Code and Codex. 
@@ -147,7 +202,8 @@ The enhanced **Memory Corruption** skill provides comprehensive coverage of mode
 android-exploit, app-shielding-bypass, auto-exploit, automated-exploit-gen,
 binja-scripting, cloud-mobile-security, crypto-analysis, ctf, deobfuscation,
 driver-analysis, firmware-re, generic-re, ida-scripting, ios-exploit,
-kernel-exploit, linux-malware, malware-analysis, memory-corruption, (NEW! Enhanced)
+jadx-analysis, (NEW! Android APK reverse engineering)
+kernel-exploit, linux-malware, malware-analysis, memory-corruption, (Enhanced)
 mobile-malware-analysis, mobile-pentest, modify, protocol-analysis,
 race-condition, reverse-engineering, rop-builder, shellcode-generator,
 smart-patch-binja, smart-patch-ida, vuln-audit, web-app-security
