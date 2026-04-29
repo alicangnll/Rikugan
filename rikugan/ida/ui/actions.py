@@ -114,19 +114,19 @@ if _HAS_IDA:
         def update(self, ctx) -> int:
             return idaapi.AST_ENABLE_ALWAYS
 
-def _handle_toggle_auto_reload(ctx: dict[str, Any]) -> None:
-    """Toggle auto-reload for development."""
-    try:
-        from ...core.auto_reload import is_watching, enable_auto_reload, disable_auto_reload
+    def _handle_toggle_auto_reload(ctx: dict[str, Any]) -> None:
+        """Toggle auto-reload for development."""
+        try:
+            from ...core.auto_reload import is_watching, enable_auto_reload, disable_auto_reload
 
-        if is_watching():
-            disable_auto_reload()
-            log_info("Auto-reload disabled")
-        else:
-            enable_auto_reload()
-            log_info("Auto-reload enabled - Rikugan will reload on source changes")
-    except Exception as e:
-        log_warning(f"Failed to toggle auto-reload: {e}")
+            if is_watching():
+                disable_auto_reload()
+                log_info("Auto-reload disabled")
+            else:
+                enable_auto_reload()
+                log_info("Auto-reload enabled - Rikugan will reload on source changes")
+        except Exception as e:
+            log_warning(f"Failed to toggle auto-reload: {e}")
 
     class _SendToBulkRenameAction(idaapi.action_handler_t):
         """Send the current function to the Bulk Renamer."""
@@ -381,7 +381,6 @@ def _handle_toggle_auto_reload(ctx: dict[str, Any]) -> None:
                 self._registered = False
 
 else:
-
     class RikuganUIHooks:
         """Stub when IDA is not available."""
 
