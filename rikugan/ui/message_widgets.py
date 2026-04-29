@@ -285,7 +285,8 @@ class AssistantMessageWidget(QFrame):
             self._thinking_block.hide()
         # Extract code blocks before rendering
         self._extract_code_blocks(visible)
-        self._content.setText(md_to_html(visible))
+        # Use setHtml for proper HTML rendering instead of setText
+        self._content.setHtml(md_to_html(visible))
         self._pending_delta = 0
 
     def _extract_code_blocks(self, text: str) -> None:
@@ -309,11 +310,21 @@ class AssistantMessageWidget(QFrame):
             return False
 
         try:
-            # Use Qt clipboard (works in both IDA and standalone)
             from .copy_utils import add_copy_to_clipboard
+            import html
+
             last_block = self._code_blocks[-1]
-            add_copy_to_clipboard(last_block['code'])
-            print(f"Copied code block ({len(last_block['code'])} chars)")
+            raw_code = last_block['code']
+
+            # If raw_code contains HTML entities, decode them
+            if '&lt;' in raw_code or '&gt;' in raw_code or '&amp;' in raw_code:
+                try:
+                    raw_code = html.unescape(raw_code)
+                except:
+                    pass  # If decoding fails, use as-is
+
+            add_copy_to_clipboard(raw_code)
+            print(f"Copied code block ({len(raw_code)} chars)")
             return True
         except Exception as e:
             print(f"Failed to copy code block: {e}")
@@ -332,7 +343,21 @@ class AssistantMessageWidget(QFrame):
 
         try:
             from .copy_utils import add_copy_to_clipboard
-            all_code = '\n\n'.join(block['code'] for block in self._code_blocks)
+            import html
+
+            # Collect and decode all code blocks
+            decoded_blocks = []
+            for block in self._code_blocks:
+                code = block['code']
+                # If code contains HTML entities, decode them
+                if '&lt;' in code or '&gt;' in code or '&amp;' in code:
+                    try:
+                        code = html.unescape(code)
+                    except:
+                        pass  # If decoding fails, use as-is
+                decoded_blocks.append(code)
+
+            all_code = '\n\n'.join(decoded_blocks)
             add_copy_to_clipboard(all_code)
             print(f"Copied {len(self._code_blocks)} code blocks ({len(all_code)} chars)")
             return True

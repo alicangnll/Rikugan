@@ -8,6 +8,7 @@ Handles the subset of Markdown that LLMs commonly produce:
 - Bullet lists (- item, * item)
 - Numbered lists (1. item)
 - Links [text](url)
+- Tables (| Header | Header |)
 - Paragraphs (double newline)
 - Horizontal rules (---, ***)
 
@@ -31,7 +32,7 @@ _HR_COLOR = "#3c3c3c"
 _H_COLOR = "#569cd6"
 
 _MARKDOWN_HINT_RE = re.compile(
-    r"(^#{1,4}\s)|(^\s*[-*]\s+)|(^\s*\d+[.)]\s+)|```|`[^`]+`|\*\*|__|(?<!\w)\*(.+?)\*(?!\w)|(?<!\w)_(.+?)_(?!\w)|\[[^\]]+\]\([^)]+\)|^[-*_]{3,}\s*$",
+    r"(^#{1,4}\s)|(^\s*[-*]\s+)|(^\s*\d+[.)]\s+)|```|`[^`]+`|\*\*|__|(?<!\w)\*(.+?)\*(?!\w)|(?<!\w)_(.+?)_(?!\w)|\[[^\]]+\]\([^)]+\)|^[-*_]{3,}\s*$|^\|.+?\|",
     re.MULTILINE,
 )
 
@@ -49,10 +50,99 @@ _BLOCK_CODE_STYLE = (
     f"position:relative;"  # Add relative positioning for copy button
 )
 
+_TABLE_STYLE = (
+    f"border:1px solid {_CODE_BORDER}; border-collapse:collapse; "
+    f"margin:12px 0; width:100%; max-width:100%; "
+    f"background-color:{_BLOCK_BG};"
+)
+
+_TABLE_TH_STYLE = (
+    f"background-color:#252526; color:{_H_COLOR}; "
+    f"border:1px solid {_CODE_BORDER}; padding:10px 14px; "
+    f"text-align:left; font-weight:bold; font-size:13px;"
+)
+
+_TABLE_TD_STYLE = (
+    f"border:1px solid {_CODE_BORDER}; padding:8px 14px; "
+    f"color:{_BLOCK_FG}; font-size:13px;"
+)
+
+_TABLE_ROW_EVEN_STYLE = "background-color:#1e1e1e;"
+_TABLE_ROW_ODD_STYLE = "background-color:#252526;"
+
 
 def _has_markdown_syntax(text: str) -> bool:
     """Return True when the input likely needs markdown processing."""
     return bool(text and _MARKDOWN_HINT_RE.search(text))
+
+
+def _parse_table_row(row: str, is_header: bool = False, row_num: int = 0) -> str:
+    """Parse a single table row and return HTML."""
+    # Remove leading/trailing pipes and split
+    cells = [cell.strip() for cell in row.strip().split('|')]
+    # Remove empty cells from leading/trailing pipes
+    cells = [cell for cell in cells if cell or not (cells.index(cell) == 0 or cells.index(cell) == len(cells) - 1)]
+
+    tag = "th" if is_header else "td"
+    style = _TABLE_TH_STYLE if is_header else _TABLE_TD_STYLE
+
+    # Add alternating row colors for data rows
+    row_style = ""
+    if not is_header:
+        row_style = _TABLE_ROW_EVEN_STYLE if row_num % 2 == 0 else _TABLE_ROW_ODD_STYLE
+
+    cells_html = []
+    for cell in cells:
+        # Apply inline formatting to cell content
+        formatted_cell = _inline(cell)
+        cells_html.append(f"<{tag} style=\"{style}\">{formatted_cell}</{tag}>")
+
+    if row_style:
+        return "<tr style=\"" + row_style + "\">" + "".join(cells_html) + "</tr>"
+    return "<tr>" + "".join(cells_html) + "</tr>"
+
+
+def _extract_table(text: str, start_idx: int) -> tuple[str, int]:
+    """Extract a complete table from text starting at start_idx.
+
+    Returns:
+        (table_html, new_index) - HTML table and index after the table
+    """
+    lines = text.split('\n')
+    table_lines = []
+    i = start_idx
+
+    # Collect all consecutive table lines
+    while i < len(lines):
+        line = lines[i].strip()
+        if line.startswith('|') and line.endswith('|'):
+            table_lines.append(line)
+            i += 1
+        elif line.startswith('|') and '| --- ' in line.replace(' ', ''):
+            # Separator line
+            table_lines.append(line)
+            i += 1
+        else:
+            break
+
+    if not table_lines:
+        return "", start_idx
+
+    # Parse the table
+    # First line is header
+    header_row = _parse_table_row(table_lines[0], is_header=True)
+
+    # Skip separator line (second line)
+    tbody_rows = []
+    row_num = 0
+    for line in table_lines[2:]:
+        if line and '|' in line:
+            tbody_rows.append(_parse_table_row(line, is_header=False, row_num=row_num))
+            row_num += 1
+
+    table_html = f"<table style=\"{_TABLE_STYLE}\"><thead>{header_row}</thead><tbody>{''.join(tbody_rows)}</tbody></table>"
+
+    return table_html, i
 
 
 def md_to_html(text: str) -> str:
@@ -97,7 +187,7 @@ def md_to_html(text: str) -> str:
             onmouseover="this.style.opacity='1'"
             onmouseout="this.style.opacity='0'"
             data-block-id="{block_id}"
-        >📋</button>
+        >Copy</button>
         '''
 
         # Add hover effect to the container
@@ -150,6 +240,24 @@ def md_to_html(text: str) -> str:
             i += 1
             continue
 
+        # Tables — detect and extract complete tables
+        if stripped.startswith('|') and stripped.endswith('|') and '|' in stripped[1:-1]:
+            # This looks like a table row, check if next line is separator
+            if i + 1 < len(lines):
+                next_line = lines[i + 1].strip()
+                if next_line.startswith('|') and re.search(r'^\|?\s*:?-+:?\s*\|(\s*:?-+:?\s*\|)*\s*:?-+:?\s*\|?$', next_line):
+                    # This is a table! Extract it
+                    full_text = "\n".join(lines)
+                    table_html, new_i = _extract_table(full_text, i)
+                    if table_html:
+                        out_lines.append(table_html)
+                        i = new_i
+                        continue
+            # If not a valid table, treat as regular text
+            out_lines.append(_inline(stripped))
+            i += 1
+            continue
+
         # Bullet list — collect consecutive items
         if re.match(r"^[-*]\s+", stripped):
             items: list[str] = []
@@ -182,9 +290,12 @@ def md_to_html(text: str) -> str:
 
     result = "<br>".join(out_lines)
 
-    # Phase 3: restore code blocks
-    for idx, block_html in enumerate(blocks):
-        result = result.replace(f"\x00BLOCK{idx}\x00", block_html)
+    # Phase 3: restore code blocks (only even indices are HTML, odd are raw markers)
+    for idx in range(0, len(blocks), 2):
+        if idx < len(blocks):
+            block_html = blocks[idx]
+            block_num = idx // 2
+            result = result.replace(f"\x00BLOCK{block_num}\x00", block_html)
 
     # Clean up double <br> from paragraph joins
     result = re.sub(r"(<br>\s*){3,}", "<br><br>", result)
@@ -218,7 +329,29 @@ def _inline(text: str) -> str:
 
 
 def _inline_formatting(text: str) -> str:
-    """Apply bold, italic, and link formatting."""
+    """Apply bold, italic, link, and badge formatting."""
+    # Severity badges: 🔴 CRITICAL, 🟠 HIGH, 🟡 MEDIUM, 🟢 LOW
+    text = re.sub(
+        r"🔴\s*(CRITICAL|Critical)",
+        r'<span style="background-color:#5a1e1e; color:#f44747; padding:2px 8px; border-radius:3px; font-weight:bold; font-size:11px;">\1</span>',
+        text
+    )
+    text = re.sub(
+        r"🟠\s*(HIGH|High)",
+        r'<span style="background-color:#5a3a1e; color:#ff9800; padding:2px 8px; border-radius:3px; font-weight:bold; font-size:11px;">\1</span>',
+        text
+    )
+    text = re.sub(
+        r"🟡\s*(MEDIUM|Medium)",
+        r'<span style="background-color:#5a4a1e; color:#ffc107; padding:2px 8px; border-radius:3px; font-weight:bold; font-size:11px;">\1</span>',
+        text
+    )
+    text = re.sub(
+        r"🟢\s*(LOW|Low)",
+        r'<span style="background-color:#1e3a2e; color:#4caf50; padding:2px 8px; border-radius:3px; font-weight:bold; font-size:11px;">\1</span>',
+        text
+    )
+
     # Bold: **text** or __text__
     text = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", text)
     text = re.sub(r"__(.+?)__", r"<b>\1</b>", text)
