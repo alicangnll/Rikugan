@@ -8,7 +8,6 @@ from typing import ClassVar
 
 from .markdown import md_to_html
 from .qt_compat import (
-    QAction,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -357,25 +356,16 @@ class AssistantMessageWidget(QFrame):
         if self._code_blocks:
             # Add copy options for code blocks
             if len(self._code_blocks) == 1:
-                copy_action = QAction("📋 Copy Code", menu)
-                copy_action.triggered.connect(self.copy_last_code_block)
-                menu.addAction(copy_action)
+                menu.addAction("📋 Copy Code", self.copy_last_code_block)
             else:
-                copy_last_action = QAction("📋 Copy Last Code Block", menu)
-                copy_last_action.triggered.connect(self.copy_last_code_block)
-                menu.addAction(copy_last_action)
-
-                copy_all_action = QAction("📋 Copy All Code Blocks", menu)
-                copy_all_action.triggered.connect(self.copy_all_code_blocks)
-                menu.addAction(copy_all_action)
+                menu.addAction("📋 Copy Last Code Block", self.copy_last_code_block)
+                menu.addAction("📋 Copy All Code Blocks", self.copy_all_code_blocks)
 
             menu.addSeparator()
 
         # Add standard copy action
-        copy_action = QAction("Copy Selection", menu)
-        copy_action.setShortcut("Ctrl+C")
-        # Let Qt handle the standard copy
-        menu.addAction(copy_action)
+        menu.addAction("Copy Selection")
+        menu.setActiveAction(menu.actions()[-1])
 
         menu.exec_(self._content.mapToGlobal(pos))
 
