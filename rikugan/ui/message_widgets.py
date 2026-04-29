@@ -338,16 +338,22 @@ class AssistantMessageWidget(QFrame):
         self._thinking_block = _ThinkingBlock()
         layout.addWidget(self._thinking_block)
 
-        # Container for mixed content (HTML labels + code block widgets)
-        self._content_container = QWidget()
-        self._content_layout = QVBoxLayout(self._content_container)
-        self._content_layout.setContentsMargins(0, 0, 0, 0)
-        self._content_layout.setSpacing(4)
-        self._content_layout.addStretch()
-        layout.addWidget(self._content_container)
-
-        # Track current content widgets
-        self._content_widgets: list[QWidget] = []
+        self._content = QLabel()
+        self._content.setWordWrap(True)
+        self._content.setTextFormat(Qt.TextFormat.RichText)
+        self._content.setTextInteractionFlags(
+            qt_flags(
+                Qt.TextInteractionFlag.TextSelectableByMouse,
+                Qt.TextInteractionFlag.TextSelectableByKeyboard,
+                Qt.TextInteractionFlag.LinksAccessibleByMouse,
+            )
+        )
+        self._content.setOpenExternalLinks(True)
+        self._content.setStyleSheet("color: #d4d4d4; font-size: 13px;")
+        # Prevent the label from requesting more width than its parent
+        self._content.setMinimumWidth(0)
+        self._content.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        layout.addWidget(self._content)
 
     def _render(self) -> None:
         thinking, visible = _split_thinking(self._full_text)

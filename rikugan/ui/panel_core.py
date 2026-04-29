@@ -1075,15 +1075,6 @@ class RikuganPanelCore(QWidget):
             self._tab_event_buffers[current_tab_id].append(event)
             return
 
-        # Process any buffered events for this tab first (from previous tab switches)
-        current_tab_id = self._ctrl.active_tab_id
-        if current_tab_id in self._tab_event_buffers and self._tab_event_buffers[current_tab_id]:
-            for buffered_event in self._tab_event_buffers[current_tab_id]:
-                if not self._is_shutdown:
-                    chat_view.handle_event(buffered_event)
-            # Clear buffer after replaying (it's already been consumed)
-            self._tab_event_buffers[current_tab_id].clear()
-
         # Handle the current event
         chat_view.handle_event(event)
 
