@@ -31,7 +31,7 @@ _HR_COLOR = "#3c3c3c"
 _H_COLOR = "#569cd6"
 
 _MARKDOWN_HINT_RE = re.compile(
-    r"(^#{1,4}\s)|(^\s*[-*]\s+)|(^\s*\d+[.)]\s+)|```|`[^`]+`|\*\*|__|(?<!\w)\*(.+?)\*(?!\w)|(?<!\w)_(.+?)_(?!\w)|\[[^\]]+\]\([^)]+\)|^[-*_]{3,}\s*$|^\|.*\|",
+    r"(^#{1,4}\s)|(^\s*[-*]\s+)|(^\s*\d+[.)]\s+)|```|`[^`]+`|\*\*|__|(?<!\w)\*(.+?)\*(?!\w)|(?<!\w)_(.+?)_(?!\w)|\[[^\]]+\]\([^)]+\)|^[-*_]{3,}\s*$|^\|.*\||[┌─┐│└┘▽▼▲△╔╗╚╝║═╟┤┬┴├┤┼┴┬╭╮╰╯╱╲╳▀▄■▴▸▶►◄↕↔↖↗↘↙→←↑↓⇐⇑⇒⇔⇕⇖⇗⇘⇙⌈⌉⌊⌋⌌⌍⌎⏏⏐⏑⏒⏓⏔⏕⏖⏗⏘⏙␟␠␡␢␣␤␥␦␧␨␩␪␫␬␭␮␯␰␱␲␳␴␵␶␷␸␹␺␻␼␽␾␿⏀⏁⏂⏃⏄⏅⏆⏇⏈⏉⏊⏋⏌⏍⏎⏏⏐⏑⏒⏓⏔⏕⏖⏗⏘⏙⏚⏛⏜⏝⏞⏟⏠]",
     re.MULTILINE,
 )
 
@@ -203,15 +203,6 @@ def md_to_html(text: str, return_code_blocks: bool = False) -> str | tuple:
     if not text:
         return "" if not return_code_blocks else ("", [], [])
 
-    # Check for ASCII art diagrams first
-    if _is_ascii_art_diagram(text):
-        if not return_code_blocks:
-            escaped = html.escape(text)
-            diagram_html = f'<div style="{_DIAGRAM_STYLE}">{escaped}</div>'
-            return diagram_html
-        else:
-            return ('', [], [(text,)])  # (diagram_text,) tuple for consistency
-
     if not _has_markdown_syntax(text):
         escaped = html.escape(text).replace("\n", "<br>")
         result = re.sub(r"(<br>\s*){3,}", "<br><br>", escaped)
@@ -261,7 +252,9 @@ def md_to_html(text: str, return_code_blocks: bool = False) -> str | tuple:
     def _has_diagram_chars(line: str) -> bool:
         if not line:
             return False
-        return any(char in _ASCII_ART_PATTERN.pattern for char in line)
+        # Check if line has any diagram characters
+        diagram_char_count = len(_ASCII_ART_PATTERN.findall(line))
+        return diagram_char_count >= 1  # At least 1 diagram char per line
 
     while i < len(lines):
         line = lines[i]
