@@ -30,6 +30,20 @@ _LINK_COLOR = "#569cd6"
 _HR_COLOR = "#3c3c3c"
 _H_COLOR = "#569cd6"
 
+# Suspicious API highlighting colors
+_API_CRITICAL_BG = "#3d1f1f"
+_API_CRITICAL_FG = "#ff6b6b"
+_API_HIGH_BG = "#3d2a1f"
+_API_HIGH_FG = "#ffa07a"
+_API_MEDIUM_BG = "#3d3a1f"
+_API_MEDIUM_FG = "#ffd93d"
+_API_LOW_BG = "#1f3d2a"
+_API_LOW_FG = "#6bff98"
+
+# Anti-debug highlighting
+_ANTI_DEBUG_BG = "#2d1f3d"
+_ANTI_DEBUG_FG = "#d9b3ff"
+
 _MARKDOWN_HINT_RE = re.compile(
     r"(^#{1,4}\s)|(^\s*[-*]\s+)|(^\s*\d+[.)]\s+)|```|`[^`]+`|\*\*|__|(?<!\w)\*(.+?)\*(?!\w)|(?<!\w)_(.+?)_(?!\w)|\[[^\]]+\]\([^)]+\)|^[-*_]{3,}\s*$|^\|.*\||[┌─┐│└┘▽▼▲△╔╗╚╝║═╟┤┬┴├┤┼┴┬╭╮╰╯╱╲╳▀▄■▴▸▶►◄↕↔↖↗↘↙→←↑↓⇐⇑⇒⇔⇕⇖⇗⇘⇙⌈⌉⌊⌋⌌⌍⌎⏏⏐⏑⏒⏓⏔⏕⏖⏗⏘⏙␟␠␡␢␣␤␥␦␧␨␩␪␫␬␭␮␯␰␱␲␳␴␵␶␷␸␹␺␻␼␽␾␿⏀⏁⏂⏃⏄⏅⏆⏇⏈⏉⏊⏋⏌⏍⏎⏏⏐⏑⏒⏓⏔⏕⏖⏗⏘⏙⏚⏛⏜⏝⏞⏟⏠]",
     re.MULTILINE,
@@ -163,18 +177,110 @@ def _parse_table(lines: list[str], start_idx: int) -> tuple[str, int]:
     return "".join(html_parts), i
 
 
+# Suspicious API detection patterns (subset for highlighting)
+_SUSPICIOUS_API_PATTERNS = {
+    # Critical - Process Injection
+    "CreateRemoteThread": {"severity": "critical", "color": _API_CRITICAL_FG},
+    "WriteProcessMemory": {"severity": "critical", "color": _API_CRITICAL_FG},
+    "VirtualAllocEx": {"severity": "critical", "color": _API_CRITICAL_FG},
+    "NtAllocateVirtualMemory": {"severity": "critical", "color": _API_CRITICAL_FG},
+    "NtWriteVirtualMemory": {"severity": "critical", "color": _API_CRITICAL_FG},
+    "NtCreateThreadEx": {"severity": "critical", "color": _API_CRITICAL_FG},
+    "RtlCreateUserThread": {"severity": "critical", "color": _API_CRITICAL_FG},
+
+    # High - Code Injection, Memory Manipulation
+    "SetWindowsHookEx": {"severity": "high", "color": _API_HIGH_FG},
+    "SetWindowsHookExA": {"severity": "high", "color": _API_HIGH_FG},
+    "SetWindowsHookExW": {"severity": "high", "color": _API_HIGH_FG},
+    "VirtualProtect": {"severity": "high", "color": _API_HIGH_FG},
+    "VirtualProtectEx": {"severity": "high", "color": _API_HIGH_FG},
+    "NtProtectVirtualMemory": {"severity": "high", "color": _API_HIGH_FG},
+
+    # High - Crypto, Network
+    "CryptEncrypt": {"severity": "high", "color": _API_HIGH_FG},
+    "CryptDecrypt": {"severity": "high", "color": _API_HIGH_FG},
+    "CryptImportKey": {"severity": "high", "color": _API_HIGH_FG},
+    "CryptExportKey": {"severity": "high", "color": _API_HIGH_FG},
+    "HttpSendRequest": {"severity": "high", "color": _API_HIGH_FG},
+    "HttpSendRequestA": {"severity": "high", "color": _API_HIGH_FG},
+    "HttpSendRequestW": {"severity": "high", "color": _API_HIGH_FG},
+    "InternetConnect": {"severity": "high", "color": _API_HIGH_FG},
+    "GetProcAddress": {"severity": "high", "color": _API_HIGH_FG},
+
+    # Medium - Process/File/Registry
+    "CreateProcess": {"severity": "medium", "color": _API_MEDIUM_FG},
+    "ShellExecute": {"severity": "medium", "color": _API_MEDIUM_FG},
+    "LoadLibrary": {"severity": "medium", "color": _API_MEDIUM_FG},
+    "RegSetValue": {"severity": "medium", "color": _API_MEDIUM_FG},
+    "RegSetValueEx": {"severity": "medium", "color": _API_MEDIUM_FG},
+    "CreateFile": {"severity": "medium", "color": _API_MEDIUM_FG},
+    "DeleteFile": {"severity": "medium", "color": _API_MEDIUM_FG},
+
+    # Anti-debug APIs
+    "IsDebuggerPresent": {"severity": "critical", "color": _ANTI_DEBUG_FG},
+    "CheckRemoteDebuggerPresent": {"severity": "critical", "color": _ANTI_DEBUG_FG},
+    "OutputDebugString": {"severity": "medium", "color": _ANTI_DEBUG_FG},
+    "DebugBreak": {"severity": "medium", "color": _ANTI_DEBUG_FG},
+    "NtQueryInformationProcess": {"severity": "critical", "color": _ANTI_DEBUG_FG},
+    "UnhandledExceptionFilter": {"severity": "critical", "color": _ANTI_DEBUG_FG},
+    "AddVectoredExceptionHandler": {"severity": "critical", "color": _ANTI_DEBUG_FG},
+}
+
+
+def _highlight_suspicious_apis(text: str) -> str:
+    """Highlight suspicious API calls in text.
+
+    Args:
+        text: Input text that may contain API names
+
+    Returns:
+        Text with APIs highlighted in HTML spans
+    """
+    for api_name, api_info in _SUSPICIOUS_API_PATTERNS.items():
+        # Match whole API name only (case-insensitive)
+        pattern = r"\b" + re.escape(api_name) + r"\b"
+        severity = api_info["severity"]
+        color = api_info["color"]
+
+        # Choose background color based on severity
+        bg_colors = {
+            "critical": _API_CRITICAL_BG,
+            "high": _API_HIGH_BG,
+            "medium": _API_MEDIUM_BG,
+            "low": _API_LOW_BG,
+        }
+        bg_color = bg_colors.get(severity, _API_MEDIUM_BG)
+
+        # Create highlighted span
+        replacement = f'<span style="background-color:{bg_color}; color:{color}; padding:1px 3px; border-radius:2px; font-family:monospace; font-weight:bold;">{api_name}</span>'
+
+        text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
+
+    return text
+
+
 def _has_markdown_syntax(text: str) -> bool:
     """Return True when the input likely needs markdown processing."""
     return bool(text and _MARKDOWN_HINT_RE.search(text))
 
 
 def _is_ascii_art_diagram(text: str) -> bool:
-    """Check if text is an ASCII art diagram."""
+    """Check if text is an ASCII art diagram (not a numbered list)."""
     if not text or len(text) < 3:
         return False
 
     lines = text.split('\n')
     if len(lines) < 3:
+        return False
+
+    # Exclude numbered lists - check if most lines start with numbers
+    numbered_line_count = 0
+    for line in lines:
+        if re.match(r"^\s*\d+[.\)]\s+", line.strip()):
+            numbered_line_count += 1
+
+    # If more than 50% of lines are numbered list items, it's not a diagram
+    if numbered_line_count / len(lines) > 0.5:
         return False
 
     # Count diagram characters
@@ -252,9 +358,12 @@ def md_to_html(text: str, return_code_blocks: bool = False) -> str | tuple:
     def _has_diagram_chars(line: str) -> bool:
         if not line:
             return False
-        # Check if line has any diagram characters
+        # Check if line is a numbered list item - exclude it
+        if re.match(r"^\s*\d+[.\)]\s+", line.strip()):
+            return False
+        # Check if line has significant diagram character density
         diagram_char_count = len(_ASCII_ART_PATTERN.findall(line))
-        return diagram_char_count >= 1  # At least 1 diagram char per line
+        return diagram_char_count >= 3  # Require at least 3 diagram chars per line
 
     while i < len(lines):
         line = lines[i]
@@ -405,7 +514,7 @@ def _inline(text: str) -> str:
 
 
 def _inline_formatting(text: str) -> str:
-    """Apply bold, italic, and link formatting."""
+    """Apply bold, italic, link, hex address, and suspicious API formatting."""
     # Bold: **text** or __text__
     text = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", text)
     text = re.sub(r"__(.+?)__", r"<b>\1</b>", text)
@@ -414,11 +523,30 @@ def _inline_formatting(text: str) -> str:
     text = re.sub(r"(?<!\w)\*(.+?)\*(?!\w)", r"<i>\1</i>", text)
     text = re.sub(r"(?<!\w)_(.+?)_(?!\w)", r"<i>\1</i>", text)
 
+    # Hex addresses: 0x401000, 0X401000, 401000h, :00401000, sub_401000
+    # Convert to clickable links
+    def _make_address_link(m: re.Match) -> str:
+        addr = m.group(0)
+        return f'<a style="color:{_LINK_COLOR}; text-decoration:underline;" href="ida://{addr}">{addr}</a>'
+
+    # Match various hex address formats
+    # sub_401000, loc_401000, off_401000, etc. (IDA labels) - do first to avoid partial matches
+    text = re.sub(r"\b(?:sub|loc|off|seg|str|byte|word|dword|qword|asc)_[0-9a-fA-F]+\b", _make_address_link, text)
+    # 0x401000 or 0X401000
+    text = re.sub(r"\b0[xX][0-9a-fA-F]+\b", _make_address_link, text)
+    # 401000h or 401000H (assembly style)
+    text = re.sub(r"\b[0-9a-fA-F]+h\b", _make_address_link, text)
+    # :00401000 (IDA format)
+    text = re.sub(r":[0-9a-fA-F]{8}\b", _make_address_link, text)
+
     # Links: [text](url)
     text = re.sub(
         r"\[([^\]]+)\]\(([^)]+)\)",
         rf'<a style="color:{_LINK_COLOR};" href="\2">\1</a>',
         text,
     )
+
+    # Suspicious API highlighting - do this last to avoid interfering with other formatting
+    text = _highlight_suspicious_apis(text)
 
     return text

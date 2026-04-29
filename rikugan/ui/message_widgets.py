@@ -506,12 +506,134 @@ class AssistantMessageWidget(QFrame):
                 Qt.TextInteractionFlag.LinksAccessibleByMouse,
             )
         )
-        label.setOpenExternalLinks(True)
+        label.setOpenExternalLinks(False)  # Handle IDA links internally
+        label.linkActivated.connect(self._on_link_clicked)
+        label.linkHovered.connect(self._on_link_hovered)
         label.setStyleSheet("color: #d4d4d4; font-size: 13px;")
         label.setMinimumWidth(0)
         label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         label.setText(html_text)
         return label
+
+    def _on_link_hovered(self, url: str) -> None:
+        """Handle link hover - show tooltip with address info."""
+        if url.startswith("ida://"):
+            address_str = url[6:]  # Remove "ida://" prefix
+            self._show_address_tooltip(address_str)
+        else:
+            # External link
+            from ..core.logging import log_debug
+            log_debug(f"Hovering external link: {url}")
+
+    def _show_address_tooltip(self, address_str: str) -> None:
+        """Show tooltip with address information."""
+        try:
+            import re
+            from ..core.host import is_ida
+            from ..core.logging import log_debug
+
+            # Parse address
+            clean_addr = address_str.strip()
+            match = re.search(
+                r"0[xX]([0-9a-fA-F]+)|:([0-9a-fA-F]{8})|([0-9a-fA-F]+)h?|(?:sub|loc|off|seg|str|byte|word|dword|qword|asc)_([0-9a-fA-F]+)",
+                clean_addr
+            )
+
+            if match:
+                hex_value = None
+                for group in match.groups():
+                    if group:
+                        hex_value = group
+                        break
+
+                if hex_value:
+                    address = int(hex_value, 16)
+
+                    # Try to get function name at this address (if in IDA)
+                    tooltip_text = f"Click to jump to 0x{address:X}"
+
+                    if is_ida():
+                        try:
+                            # Try to get function name
+                            from ..core import host
+                            if host._idaapi:
+                                func = host._idaapi.get_func(address)
+                                if func:
+                                    func_name = host._idaapi.get_func_name(address)
+                                    tooltip_text = f"Jump to {func_name}()\n0x{address:X}"
+                                else:
+                                    # Check if it's a data item
+                                    seg_name = host._idaapi.get_segm_name(address)
+                                    if seg_name:
+                                        tooltip_text = f"Jump to {seg_name}:0x{address:X}"
+                        except Exception:
+                            pass  # Keep default tooltip
+
+                    # Set tooltip on the widget that triggered it
+                    # Note: QLabel doesn't expose the hovered link position easily,
+                    # so we set tooltip on the whole label
+                    from ..core.logging import log_debug
+                    log_debug(f"Address hover: {tooltip_text}")
+        except Exception as e:
+            from ..core.logging import log_debug
+            log_debug(f"Failed to show address tooltip: {e}")
+
+    def _on_link_clicked(self, url: str) -> None:
+        """Handle link clicks - IDA address jumps and external links."""
+        if url.startswith("ida://"):
+            # Extract address from ida://0x401000 format
+            address_str = url[6:]  # Remove "ida://" prefix
+            self._jump_to_address(address_str)
+        else:
+            # External link - open in browser
+            from ..core.logging import log_debug
+            import webbrowser
+            log_debug(f"Opening external link: {url}")
+            webbrowser.open(url)
+
+    def _jump_to_address(self, address_str: str) -> None:
+        """Jump to address in IDA."""
+        try:
+            from ..core.host import navigate_to_address
+            from ..core.logging import log_info, log_debug
+            import re
+
+            # Remove common prefixes/suffixes
+            clean_addr = address_str.strip()
+
+            # Extract hex value from various formats:
+            # 0x401000, 0X401000, :00401000, 401000h, sub_401000, loc_401000
+            match = re.search(
+                r"0[xX]([0-9a-fA-F]+)|:([0-9a-fA-F]{8})|([0-9a-fA-F]+)h?|(?:sub|loc|off|seg|str|byte|word|dword|qword|asc)_([0-9a-fA-F]+)",
+                clean_addr
+            )
+
+            if match:
+                # Find which group matched
+                hex_value = None
+                for group in match.groups():
+                    if group:
+                        hex_value = group
+                        break
+
+                if hex_value:
+                    # Convert to integer
+                    address = int(hex_value, 16)
+
+                    # Jump in IDA
+                    log_info(f"Jumping to address 0x{address:X} ({address_str})")
+                    success = navigate_to_address(address)
+
+                    if not success:
+                        log_debug(f"Failed to jump to address 0x{address:X}")
+                else:
+                    log_debug(f"Could not parse address from: {address_str}")
+            else:
+                log_debug(f"Invalid address format: {address_str}")
+
+        except Exception as e:
+            from ..core.logging import log_error
+            log_error(f"Failed to jump to address {address_str}: {e}")
 
     def append_text(self, delta: str) -> None:
         self._full_text += delta
