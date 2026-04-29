@@ -155,22 +155,39 @@ def _has_markdown_syntax(text: str) -> bool:
     return bool(text and _MARKDOWN_HINT_RE.search(text))
 
 
-def md_to_html(text: str) -> str:
-    """Convert a Markdown string to Qt-compatible HTML."""
+def md_to_html(text: str, return_code_blocks: bool = False) -> str | tuple:
+    """Convert a Markdown string to Qt-compatible HTML.
+
+    Args:
+        text: Markdown text to convert
+        return_code_blocks: If True, returns (html, code_blocks) tuple where
+                           code_blocks is a list of (lang, code) tuples.
+
+    Returns:
+        HTML string, or (html, code_blocks) tuple if return_code_blocks=True.
+    """
     if not text:
-        return ""
+        return "" if not return_code_blocks else ("", [])
+
     if not _has_markdown_syntax(text):
         escaped = html.escape(text).replace("\n", "<br>")
-        return re.sub(r"(<br>\s*){3,}", "<br><br>", escaped)
+        result = re.sub(r"(<br>\s*){3,}", "<br><br>", escaped)
+        return result if not return_code_blocks else (result, [])
 
     # Phase 1: extract fenced code blocks to protect them from inline processing
     blocks: list[str] = []
+    code_blocks: list[tuple[str, str]] = []  # (lang, code) tuples
 
     def _stash_block(m: re.Match) -> str:
         lang = m.group(1) or ""
-        code = html.escape(m.group(2).strip("\n"))
+        code = m.group(2).strip("\n")
+
+        # Store original code for copy button functionality
+        code_blocks.append((lang, code))
+
+        code_escaped = html.escape(code)
         lang_tag = f'<span style="color:#808080;font-size:10px;">{html.escape(lang)}</span><br>' if lang else ""
-        block_html = f'<div style="{_BLOCK_CODE_STYLE}">{lang_tag}{code}</div>'
+        block_html = f'<div style="{_BLOCK_CODE_STYLE}">{lang_tag}{code_escaped}</div>'
         blocks.append(block_html)
         return f"\x00BLOCK{len(blocks) - 1}\x00"
 
@@ -251,13 +268,16 @@ def md_to_html(text: str) -> str:
 
     result = "<br>".join(out_lines)
 
-    # Phase 3: restore code blocks
-    for idx, block_html in enumerate(blocks):
-        result = result.replace(f"\x00BLOCK{idx}\x00", block_html)
+    # Phase 3: restore code blocks (only if not returning code blocks for widget rendering)
+    if not return_code_blocks:
+        for idx, block_html in enumerate(blocks):
+            result = result.replace(f"\x00BLOCK{idx}\x00", block_html)
 
     # Clean up double <br> from paragraph joins
     result = re.sub(r"(<br>\s*){3,}", "<br><br>", result)
 
+    if return_code_blocks:
+        return result, code_blocks
     return result
 
 

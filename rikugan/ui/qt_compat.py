@@ -108,6 +108,7 @@ if QT_BINDING == "PySide6":
         QVBoxLayout,
         QWidget,
     )
+    from PySide6.QtGui import QClipboard
 else:
     from PyQt5.QtCore import QObject, Qt, QTimer  # noqa: F401
     from PyQt5.QtCore import pyqtSignal as Signal  # noqa: F401
@@ -117,6 +118,7 @@ else:
         QIntValidator,
         QSyntaxHighlighter,
         QTextCharFormat,
+        QClipboard,
     )
     from PyQt5.QtWidgets import (  # noqa: F401
         QAbstractItemView,

@@ -19,6 +19,8 @@ from .qt_compat import (
     QVBoxLayout,
     QWidget,
     qt_flags,
+    QApplication,
+    QClipboard,
 )
 
 _THINKING_PHRASES = [
@@ -225,6 +227,91 @@ class _ThinkingBlock(QFrame):
 
 
 # ---------------------------------------------------------------------------
+# Code block widget with copy button
+# ---------------------------------------------------------------------------
+
+
+class CodeBlockWidget(QFrame):
+    """Displays a code block with language label and copy button."""
+
+    def __init__(self, lang: str, code: str, parent: QWidget = None):
+        super().__init__(parent)
+        self.setObjectName("code_block")
+        self.setStyleSheet(
+            "QFrame#code_block { background: #1a1a1a; border: 1px solid #3c3c3c; border-radius: 4px; }"
+        )
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+        # Header with language label and copy button
+        header = QHBoxLayout()
+        header.setContentsMargins(8, 4, 4, 4)
+
+        if lang:
+            self._lang_label = QLabel(lang)
+            self._lang_label.setStyleSheet("color: #808080; font-size: 10px; font-weight: bold;")
+            header.addWidget(self._lang_label)
+        else:
+            header.addStretch()
+
+        header.addStretch()
+
+        self._copy_btn = QPushButton("Copy")
+        self._copy_btn.setStyleSheet(
+            "QPushButton { background: #2d4a6e; color: #9cdcfe; border: 1px solid #4a7ab5; "
+            "border-radius: 3px; padding: 2px 8px; font-size: 10px; }"
+            "QPushButton:hover { background: #3a5a8a; }"
+            "QPushButton:pressed { background: #1a3a5e; }"
+        )
+        self._copy_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._copy_btn.clicked.connect(lambda: self._copy_to_clipboard(code))
+        header.addWidget(self._copy_btn)
+
+        layout.addLayout(header)
+
+        # Code content
+        self._code_label = QLabel(code)
+        self._code_label.setWordWrap(True)
+        self._code_label.setTextInteractionFlags(
+            qt_flags(
+                Qt.TextInteractionFlag.TextSelectableByMouse,
+                Qt.TextInteractionFlag.TextSelectableByKeyboard,
+            )
+        )
+        self._code_label.setStyleSheet(
+            "color: #d4d4d4; font-size: 12px; font-family: monospace; "
+            "padding: 8px; background: transparent;"
+        )
+        layout.addWidget(self._code_label)
+
+    def _copy_to_clipboard(self, text: str) -> None:
+        """Copy text to clipboard and update button."""
+        clipboard = QApplication.clipboard()
+        clipboard.setText(text)
+
+        self._copy_btn.setText("Copied!")
+        self._copy_btn.setStyleSheet(
+            "QPushButton { background: #4a6a4a; color: #9cdcfe; border: 1px solid #5a8a5a; "
+            "border-radius: 3px; padding: 2px 8px; font-size: 10px; }"
+        )
+
+        # Reset button after 2 seconds
+        QTimer.singleShot(2000, self._reset_copy_button)
+
+    def _reset_copy_button(self) -> None:
+        """Reset copy button to original state."""
+        self._copy_btn.setText("Copy")
+        self._copy_btn.setStyleSheet(
+            "QPushButton { background: #2d4a6e; color: #9cdcfe; border: 1px solid #4a7ab5; "
+            "border-radius: 3px; padding: 2px 8px; font-size: 10px; }"
+            "QPushButton:hover { background: #3a5a8a; }"
+            "QPushButton:pressed { background: #1a3a5e; }"
+        )
+
+
+# ---------------------------------------------------------------------------
 # Assistant message (with streaming + Markdown)
 # ---------------------------------------------------------------------------
 
@@ -251,22 +338,16 @@ class AssistantMessageWidget(QFrame):
         self._thinking_block = _ThinkingBlock()
         layout.addWidget(self._thinking_block)
 
-        self._content = QLabel()
-        self._content.setWordWrap(True)
-        self._content.setTextFormat(Qt.TextFormat.RichText)
-        self._content.setTextInteractionFlags(
-            qt_flags(
-                Qt.TextInteractionFlag.TextSelectableByMouse,
-                Qt.TextInteractionFlag.TextSelectableByKeyboard,
-                Qt.TextInteractionFlag.LinksAccessibleByMouse,
-            )
-        )
-        self._content.setOpenExternalLinks(True)
-        self._content.setStyleSheet("color: #d4d4d4; font-size: 13px;")
-        # Prevent the label from requesting more width than its parent
-        self._content.setMinimumWidth(0)
-        self._content.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
-        layout.addWidget(self._content)
+        # Container for mixed content (HTML labels + code block widgets)
+        self._content_container = QWidget()
+        self._content_layout = QVBoxLayout(self._content_container)
+        self._content_layout.setContentsMargins(0, 0, 0, 0)
+        self._content_layout.setSpacing(4)
+        self._content_layout.addStretch()
+        layout.addWidget(self._content_container)
+
+        # Track current content widgets
+        self._content_widgets: list[QWidget] = []
 
     def _render(self) -> None:
         thinking, visible = _split_thinking(self._full_text)
@@ -275,7 +356,121 @@ class AssistantMessageWidget(QFrame):
             self._thinking_block.set_thinking(thinking, in_progress=in_progress)
         else:
             self._thinking_block.hide()
-        self._content.setText(md_to_html(visible))
+
+        # Parse markdown with code blocks extraction
+        html_content, code_blocks = md_to_html(visible, return_code_blocks=True)
+
+        # Clear existing content widgets
+        for widget in self._content_widgets:
+            widget.deleteLater()
+        self._content_widgets.clear()
+
+        # If no code blocks, use simple QLabel
+        if not code_blocks:
+            label = QLabel()
+            label.setWordWrap(True)
+            label.setTextFormat(Qt.TextFormat.RichText)
+            label.setTextInteractionFlags(
+                qt_flags(
+                    Qt.TextInteractionFlag.TextSelectableByMouse,
+                    Qt.TextInteractionFlag.TextSelectableByKeyboard,
+                    Qt.TextInteractionFlag.LinksAccessibleByMouse,
+                )
+            )
+            label.setOpenExternalLinks(True)
+            label.setStyleSheet("color: #d4d4d4; font-size: 13px;")
+            label.setMinimumWidth(0)
+            label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+            label.setText(html_content)
+            self._content_layout.insertWidget(self._content_layout.count() - 1, label)
+            self._content_widgets.append(label)
+        else:
+            # Split HTML by code block placeholders and create widgets
+            parts = html_content.split("\x00BLOCK")
+            for i, part in enumerate(parts):
+                if not part:
+                    continue
+
+                # Check if this part starts with a placeholder (e.g., "0\x00")
+                if part[0].isdigit() and "\x00" in part:
+                    # Extract the block index
+                    end_idx = part.find("\x00")
+                    idx_str = part[:end_idx]
+                    try:
+                        block_idx = int(idx_str)
+                        if block_idx < len(code_blocks):
+                            lang, code = code_blocks[block_idx]
+                            code_widget = CodeBlockWidget(lang, code)
+                            self._content_layout.insertWidget(
+                                self._content_layout.count() - 1, code_widget
+                            )
+                            self._content_widgets.append(code_widget)
+
+                            # Process remaining content after the placeholder
+                            remaining = part[end_idx + 1:]
+                            if remaining.strip():
+                                label = QLabel()
+                                label.setWordWrap(True)
+                                label.setTextFormat(Qt.TextFormat.RichText)
+                                label.setTextInteractionFlags(
+                                    qt_flags(
+                                        Qt.TextInteractionFlag.TextSelectableByMouse,
+                                        Qt.TextInteractionFlag.TextSelectableByKeyboard,
+                                        Qt.TextInteractionFlag.LinksAccessibleByMouse,
+                                    )
+                                )
+                                label.setOpenExternalLinks(True)
+                                label.setStyleSheet("color: #d4d4d4; font-size: 13px;")
+                                label.setMinimumWidth(0)
+                                label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+                                label.setText(remaining)
+                                self._content_layout.insertWidget(
+                                    self._content_layout.count() - 1, label
+                                )
+                                self._content_widgets.append(label)
+                    except (ValueError, IndexError):
+                        # If parsing fails, treat as regular text
+                        if part.strip():
+                            label = QLabel()
+                            label.setWordWrap(True)
+                            label.setTextFormat(Qt.TextFormat.RichText)
+                            label.setTextInteractionFlags(
+                                qt_flags(
+                                    Qt.TextInteractionFlag.TextSelectableByMouse,
+                                    Qt.TextInteractionFlag.TextSelectableByKeyboard,
+                                    Qt.TextInteractionFlag.LinksAccessibleByMouse,
+                                )
+                            )
+                            label.setOpenExternalLinks(True)
+                            label.setStyleSheet("color: #d4d4d4; font-size: 13px;")
+                            label.setMinimumWidth(0)
+                            label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+                            label.setText(part)
+                            self._content_layout.insertWidget(
+                                self._content_layout.count() - 1, label
+                            )
+                            self._content_widgets.append(label)
+                else:
+                    # Regular HTML content
+                    if part.strip():
+                        label = QLabel()
+                        label.setWordWrap(True)
+                        label.setTextFormat(Qt.TextFormat.RichText)
+                        label.setTextInteractionFlags(
+                            qt_flags(
+                                Qt.TextInteractionFlag.TextSelectableByMouse,
+                                Qt.TextInteractionFlag.TextSelectableByKeyboard,
+                                Qt.TextInteractionFlag.LinksAccessibleByMouse,
+                            )
+                        )
+                        label.setOpenExternalLinks(True)
+                        label.setStyleSheet("color: #d4d4d4; font-size: 13px;")
+                        label.setMinimumWidth(0)
+                        label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+                        label.setText(part)
+                        self._content_layout.insertWidget(self._content_layout.count() - 1, label)
+                        self._content_widgets.append(label)
+
         self._pending_delta = 0
 
     def append_text(self, delta: str) -> None:
