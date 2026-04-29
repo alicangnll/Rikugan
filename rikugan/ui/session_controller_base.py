@@ -153,15 +153,6 @@ class SessionControllerBase:
         if os.getenv("RIKUGAN_AUTO_RELOAD", "").lower() in ("1", "true", "yes"):
             return True
 
-        # Check config setting
-        from ..core.config import get_global_config
-        try:
-            config = get_global_config()
-            if hasattr(config, "auto_reload") and config.auto_reload:
-                return True
-        except Exception:
-            pass
-
         return False
 
     # --- Tab / multi-session management ---

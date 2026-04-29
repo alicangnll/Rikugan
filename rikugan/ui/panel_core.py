@@ -817,13 +817,15 @@ class RikuganPanelCore(QWidget):
         """Update button states based on the agent running state for the given tab."""
         is_running = self._tab_agent_running.get(tab_id, False)
 
-        # Update send/queue button
-        self._send_btn.setVisible(True)
-        self._send_btn.setEnabled(not self._awaiting_button_approval)
-        self._send_btn.setText("Queue" if is_running else "Send")
+        # Update send/queue button (if it exists)
+        if hasattr(self, '_send_btn'):
+            self._send_btn.setVisible(True)
+            self._send_btn.setEnabled(not self._awaiting_button_approval)
+            self._send_btn.setText("Queue" if is_running else "Send")
 
-        # Update cancel button visibility
-        self._cancel_btn.setVisible(is_running)
+        # Update cancel button visibility (if it exists)
+        if hasattr(self, '_cancel_btn'):
+            self._cancel_btn.setVisible(is_running)
 
         # Update input placeholder text
         if self._awaiting_button_approval:
@@ -1609,7 +1611,10 @@ class RikuganPanelCore(QWidget):
             else:
                 self._input_area.setPlaceholderText("Ask about this binary... (/ for skills, /modify to patch)")
 
-        self._send_btn.setVisible(True)
-        self._send_btn.setEnabled(not self._awaiting_button_approval)
-        self._send_btn.setText("Queue" if running else "Send")
-        self._cancel_btn.setVisible(running)
+        # Update buttons (if they exist)
+        if hasattr(self, '_send_btn'):
+            self._send_btn.setVisible(True)
+            self._send_btn.setEnabled(not self._awaiting_button_approval)
+            self._send_btn.setText("Queue" if running else "Send")
+        if hasattr(self, '_cancel_btn'):
+            self._cancel_btn.setVisible(running)
