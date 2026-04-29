@@ -97,7 +97,12 @@ class SessionControllerBase:
                 from ..core.external_sources import discover_all_external_mcp
 
                 external_mcp = discover_all_external_mcp()
-                for source_key, servers in external_mcp.items():
+
+                # Safety check: ensure external_mcp is always a dict
+                if not isinstance(external_mcp, dict):
+                    log_error(f"discover_all_external_mcp returned {type(external_mcp)} instead of dict")
+                else:
+                    for source_key, servers in external_mcp.items():
                     enabled = [s for s in servers if f"{source_key}:{s.name}" in enabled_set]
                     if enabled:
                         self._mcp_manager.add_external_configs(enabled)

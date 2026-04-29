@@ -97,10 +97,21 @@ def discover_all_external_skills() -> dict[str, list[SkillDefinition]]:
     Returns ``{"claude": [...], "codex": [...]}``.
     """
     result: dict[str, list[SkillDefinition]] = {}
-    result["claude"] = discover_claude_skills()
-    log_info(f"External skills: {len(result['claude'])} from Claude Code")
-    result["codex"] = discover_codex_skills()
-    log_info(f"External skills: {len(result['codex'])} from Codex")
+
+    try:
+        result["claude"] = discover_claude_skills()
+        log_info(f"External skills: {len(result['claude'])} from Claude Code")
+    except Exception as e:
+        log_debug(f"Failed to discover Claude Code skills: {e}")
+        result["claude"] = []
+
+    try:
+        result["codex"] = discover_codex_skills()
+        log_info(f"External skills: {len(result['codex'])} from Codex")
+    except Exception as e:
+        log_debug(f"Failed to discover Codex skills: {e}")
+        result["codex"] = []
+
     return result
 
 
@@ -253,8 +264,19 @@ def discover_all_external_mcp() -> dict[str, list[MCPServerConfig]]:
     Returns ``{"claude": [...], "codex": [...]}``.
     """
     result: dict[str, list[MCPServerConfig]] = {}
-    result["claude"] = load_claude_mcp()
-    log_info(f"External MCP: {len(result['claude'])} servers from Claude Code")
-    result["codex"] = load_codex_mcp()
-    log_info(f"External MCP: {len(result['codex'])} servers from Codex")
+
+    try:
+        result["claude"] = load_claude_mcp()
+        log_info(f"External MCP: {len(result['claude'])} servers from Claude Code")
+    except Exception as e:
+        log_debug(f"Failed to discover Claude Code MCP: {e}")
+        result["claude"] = []
+
+    try:
+        result["codex"] = load_codex_mcp()
+        log_info(f"External MCP: {len(result['codex'])} servers from Codex")
+    except Exception as e:
+        log_debug(f"Failed to discover Codex MCP: {e}")
+        result["codex"] = []
+
     return result

@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 
 from ..core.config import RikuganConfig
-from ..core.logging import log_debug, log_info
+from ..core.logging import log_debug, log_error, log_info
 from .loader import SkillDefinition, discover_skills
 
 
@@ -81,6 +81,12 @@ class SkillRegistry:
         # Discover external skills
         external = discover_all_external_skills()
         loaded = 0
+
+        # Safety check: ensure external is always a dict
+        if not isinstance(external, dict):
+            log_error(f"discover_all_external_skills returned {type(external)} instead of dict")
+            return
+
         for source_key, skills in external.items():
             for skill in skills:
                 ext_id = f"{source_key}:{skill.slug}"
