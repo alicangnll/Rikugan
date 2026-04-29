@@ -622,7 +622,6 @@ class RikuganPanelCore(QWidget):
             chat_view.deleteLater()
         # Clean up per-tab state
         self._tab_agent_running.pop(tab_id, None)
-        self._tab_event_buffers.pop(tab_id, None)
         self._update_tab_bar_visibility()
 
     def _on_export_tab(self, index: int) -> None:
