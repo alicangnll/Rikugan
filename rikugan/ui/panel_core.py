@@ -927,6 +927,22 @@ class RikuganPanelCore(QWidget):
             self._ctrl.queue_message(text)
             chat_view.add_queued_message(text)
             return
+
+        # Check if there are pending queued messages for this tab
+        # Process them first before starting a new agent
+        pending_queue = getattr(self._ctrl, '_pending_messages', {})
+        current_tab_id = self._ctrl.active_tab_id
+        if current_tab_id in pending_queue and pending_queue[current_tab_id]:
+            # Add new message to queue
+            self._ctrl.queue_message(text)
+            chat_view.add_queued_message(text)
+            # Start agent with first queued message
+            first_queued = pending_queue[current_tab_id].pop(0)
+            if not pending_queue[current_tab_id]:
+                del pending_queue[current_tab_id]
+            self._start_agent(first_queued)
+            return
+
         self._start_agent(text)
 
     def _on_send_clicked(self) -> None:
