@@ -81,7 +81,7 @@ Add a finding at 0x401000 for "Process injection entry point"
 ```
 
 **Navigate to findings**:
-- Click on finding links in AI responses: `📎 [FINDING:0x401000]`
+- Click on finding links in AI responses: `[FINDING:0x401000]`
 - Links will jump to the address and show finding details
 
 **Finding categories**:

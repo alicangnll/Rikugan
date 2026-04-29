@@ -8,7 +8,7 @@ A reverse-engineering agent for **IDA Pro**, **Binary Ninja**, and **VSCode** th
 
 [Documentation](https://rikugan.reversing.codes/docs.html) | [Architecture](https://rikugan.reversing.codes/ARCHITECTURE.html) | [Issues](https://github.com/alicangnll/Rikugan/issues)
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Accessing Rikugan from Different Interfaces
 
@@ -91,7 +91,7 @@ The agent really ***lives*** and ***breathes*** reversing.
 
 **60+ tools** covering navigation, decompiler, disassembly, cross-references, strings, annotations, types, scripting, and host-specific IL/microcode manipulation. The agent always asks permission before running scripts and will never execute the target binary. Full tool reference in the [docs](https://rikugan.reversing.codes/docs.html).
 
-**🔥 NEW: Advanced Memory Corruption & Exploitation Analysis** — v1.2.5+!
+**Advanced Memory Corruption & Exploitation Analysis** — v1.2.5+!
 
 The enhanced **Memory Corruption** skill provides comprehensive coverage of modern binary exploitation and mitigation bypass techniques:
 
@@ -123,6 +123,33 @@ The enhanced **Memory Corruption** skill provides comprehensive coverage of mode
 - **Code Bookmarking** — Mark important locations with categories, tags, and notes
 - **Advanced Search** — Find similar functions using Jaccard similarity, search by patterns/strings/imports
 
+**Security-Focused Analysis Tools** — New in v1.2.5! Malware analysis and vulnerability detection enhancements:
+
+- **Findings Bookmarking** — Bookmark important findings with addresses, notes, tags, and categories (Critical, Suspicious, Verified, Interesting, False Positive, Question). Export findings as markdown reports for documentation.
+
+- **Suspicious API Highlighting** — Automatic color-coded highlighting of dangerous APIs in AI responses based on severity:
+  - [CRIT] Critical APIs (red): CreateRemoteThread, WriteProcessMemory, VirtualAllocEx, NtAllocateVirtualMemory
+  - [HIGH] High severity APIs (orange): VirtualProtect, GetProcAddress, LoadLibrary
+  - [MED] Medium severity APIs (yellow): InternetConnect, HttpSendRequest, socket, CryptEncrypt
+  - Each API includes MITRE ATT&CK technique references (T1055, T1014, T1071, etc.)
+
+- **Anti-Debugging Detection** — Automatically detect common anti-debugging techniques used in malware:
+  - Windows API checks: IsDebuggerPresent, CheckRemoteDebuggerPresent, NtQueryInformationProcess
+  - PEB (Process Environment Block) checks: fs:[30h]/gs:[60h] BeingDebugged access patterns
+  - Assembly instructions: rdtsc (timing checks), int 2d (exception-based), int 3 (software breakpoints)
+  - Exception handlers: SetUnhandledExceptionFilter, AddVectoredExceptionHandler
+
+- **Hex Address Navigation** — All hex addresses in AI responses become clickable links for quick navigation:
+  - Supported formats: 0x401000, 00401000, 401000h, :00401000
+  - Click any address to jump to that location in IDA/Binary Ninja disassembly view
+  - Use `[FINDING:0x401000]` for bookmarked locations with custom labels
+
+- **Auto-Reload Development Mode** — Automatically reload Rikugan when source files change:
+  - Enable via environment variable: `export RIKUGAN_AUTO_RELOAD=1`
+  - Or use keyboard shortcut: `Ctrl+Shift+R` in IDA to toggle on/off
+  - Monitors all Python source files and reloads after 2 seconds of inactivity
+  - Preserves session state across reloads for rapid development iteration
+
 **Exploration** — Inspired by how code agents work, but applied to binaries. The orchestrator maps the binary (imports, exports, strings, key functions), then spawns isolated subagents to analyze in parallel. Each reports back, and the orchestrator synthesizes a complete picture.
 
 |![alt text](assets/subagents_example_3.png)|
@@ -141,7 +168,7 @@ The enhanced **Memory Corruption** skill provides comprehensive coverage of mode
 |:--:|
 |~3x speed of the workflow, original process took ~4:30 min|
 
-**🔥 NEW: JADX Integration - Android APK Analysis** — v1.2.5+!
+**JADX Integration - Android APK Analysis** — v1.2.5+!
 
 Comprehensive Android APK reverse engineering with JADX decompiler integration:
 
@@ -598,6 +625,6 @@ That's all — thanks.
 
 ---
 
-**Made with ❤️ and 🔥 by [Ali Can Gönüllü](https://github.com/alicangnll)**
+**Made with passion by [Ali Can Gönüllü](https://github.com/alicangnll)**
 
 *"The future of reverse engineering is automated, intelligent, and accessible to everyone."*
