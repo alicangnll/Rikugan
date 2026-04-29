@@ -52,19 +52,21 @@ _BLOCK_CODE_STYLE = (
 
 _TABLE_STYLE = (
     f"border:1px solid {_CODE_BORDER}; border-collapse:collapse; "
-    f"margin:12px 0; width:100%; max-width:100%; "
-    f"background-color:{_BLOCK_BG};"
+    f"margin:12px 0; width:100%; max-width:100%; table-layout:auto; "
+    f"background-color:{_BLOCK_BG}; display:table;"
 )
 
 _TABLE_TH_STYLE = (
     f"background-color:#252526; color:{_H_COLOR}; "
-    f"border:1px solid {_CODE_BORDER}; padding:10px 14px; "
-    f"text-align:left; font-weight:bold; font-size:13px;"
+    f"border:1px solid {_CODE_BORDER}; padding:8px 10px; "
+    f"text-align:left; font-weight:bold; font-size:12px; "
+    f"word-wrap:break-word; overflow:hidden;"
 )
 
 _TABLE_TD_STYLE = (
-    f"border:1px solid {_CODE_BORDER}; padding:8px 14px; "
-    f"color:{_BLOCK_FG}; font-size:13px;"
+    f"border:1px solid {_CODE_BORDER}; padding:6px 10px; "
+    f"color:{_BLOCK_FG}; font-size:12px; "
+    f"word-wrap:break-word; overflow:hidden; word-break:break-word;"
 )
 
 _TABLE_ROW_EVEN_STYLE = "background-color:#1e1e1e;"
@@ -136,8 +138,9 @@ def _extract_table(text: str, start_idx: int) -> tuple[str, int]:
     tbody_rows = []
     row_num = 0
     for line in table_lines[2:]:
-        if line and '|' in line:
-            tbody_rows.append(_parse_table_row(line, is_header=False, row_num=row_num))
+        stripped_line = line.strip()
+        if stripped_line and '|' in stripped_line:
+            tbody_rows.append(_parse_table_row(stripped_line, is_header=False, row_num=row_num))
             row_num += 1
 
     table_html = f"<table style=\"{_TABLE_STYLE}\"><thead>{header_row}</thead><tbody>{''.join(tbody_rows)}</tbody></table>"

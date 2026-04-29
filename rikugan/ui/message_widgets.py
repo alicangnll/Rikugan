@@ -116,15 +116,20 @@ class UserMessageWidget(QFrame):
 
         self._content = QLabel(text)
         self._content.setWordWrap(True)
+        self._content.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
         self._content.setTextInteractionFlags(
             qt_flags(
                 Qt.TextInteractionFlag.TextSelectableByMouse,
                 Qt.TextInteractionFlag.TextSelectableByKeyboard,
             )
         )
-        self._content.setStyleSheet("color: #d4d4d4; font-size: 13px;")
-        self._content.setMinimumWidth(0)
-        self._content.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        self._content.setStyleSheet("""
+            color: #d4d4d4;
+            font-size: 13px;
+        """)
+        self._content.setMinimumWidth(100)
+        self._content.setMinimumHeight(50)
+        self._content.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
         layout.addWidget(self._content)
 
 
@@ -255,6 +260,7 @@ class AssistantMessageWidget(QFrame):
 
         self._content = QLabel()
         self._content.setWordWrap(True)
+        self._content.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
         self._content.setTextFormat(Qt.TextFormat.RichText)
         self._content.setTextInteractionFlags(
             qt_flags(
@@ -271,9 +277,10 @@ class AssistantMessageWidget(QFrame):
         # Enable mouse tracking for double-click to copy
         self._content.setMouseTracking(True)
         self._content.mouseDoubleClickEvent = self._on_double_click
-        # Prevent the label from requesting more width than its parent
-        self._content.setMinimumWidth(0)
-        self._content.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        # Allow proper sizing for tables and long content
+        self._content.setMinimumWidth(100)
+        self._content.setMinimumHeight(50)
+        self._content.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
         layout.addWidget(self._content)
 
     def _render(self) -> None:
