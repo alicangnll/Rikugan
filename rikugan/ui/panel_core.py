@@ -263,8 +263,6 @@ class RikuganPanelCore(QWidget):
         # Tab-to-ChatView mapping
         self._chat_views: dict[str, ChatView] = {}
         self._pending_restore_messages: dict[str, list] = {}
-        # Event buffers for inactive tabs - ensures events aren't lost when switching tabs
-        self._tab_event_buffers: dict[str, list[TurnEvent]] = {}
         # Track agent running state per tab for proper button state management
         self._tab_agent_running: dict[str, bool] = {}
         self._context_bar: ContextBar | None = None
