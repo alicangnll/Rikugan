@@ -566,11 +566,24 @@ class SettingsDialog(QDialog):
                 self._oauth_cb.setChecked(False)
                 self._oauth_cb.blockSignals(False)
                 return
+
         # Update consent and refresh auth status
         from ..providers.auth_cache import invalidate_cache, set_keychain_consent
 
         set_keychain_consent(checked)
         invalidate_cache()
+
+        # Handle API key input box state based on OAuth selection
+        if checked:
+            # OAuth enabled - disable and clear API key input
+            self._api_key_edit.setEnabled(False)
+            self._api_key_edit.clear()
+            self._api_key_edit.setPlaceholderText("OAuth token will be auto-loaded from Keychain")
+        else:
+            # OAuth disabled - re-enable API key input
+            self._api_key_edit.setEnabled(True)
+            self._api_key_edit.setPlaceholderText("sk-... or leave empty for auto-detect")
+
         self._update_auth_status()
 
     # --- Auth status ---

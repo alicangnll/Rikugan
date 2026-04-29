@@ -76,6 +76,7 @@ class SettingsService:
             result.rikugan = registry.list_skills()
         except Exception as e:
             log_error(f"Failed to discover Rikugan skills: {e}")
+            result.rikugan = []
 
         try:
             from ..core.external_sources import discover_all_external_skills
@@ -83,6 +84,7 @@ class SettingsService:
             result.external = discover_all_external_skills()
         except Exception as e:
             log_error(f"Failed to discover external skills: {e}")
+            result.external = {}  # Ensure external is always a dict
 
         return result
 
@@ -92,6 +94,7 @@ class SettingsService:
             result.rikugan = load_mcp_config(self._config.mcp_config_path)
         except Exception as e:
             log_error(f"Failed to load Rikugan MCP config: {e}")
+            result.rikugan = []
 
         try:
             from ..core.external_sources import discover_all_external_mcp
@@ -99,6 +102,7 @@ class SettingsService:
             result.external = discover_all_external_mcp()
         except Exception as e:
             log_error(f"Failed to discover external MCP: {e}")
+            result.external = {}  # Ensure external is always a dict
 
         return result
 
