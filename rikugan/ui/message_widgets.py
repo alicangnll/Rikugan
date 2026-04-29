@@ -440,34 +440,16 @@ class AssistantMessageWidget(QFrame):
             widget.deleteLater()
         self._content_widgets.clear()
 
-        # Check if content has code blocks or diagrams
-        has_code = "```" in visible
-        has_diagram = _is_ascii_art_diagram(visible)
+        # Always try to extract code blocks and diagrams
+        html_content, code_blocks, diagram_blocks = md_to_html(visible, return_code_blocks=True)
 
-        if not has_code and not has_diagram:
-            # No code blocks or diagrams - use simple QLabel with HTML
-            html_content = md_to_html(visible)
-            label = QLabel()
-            label.setWordWrap(True)
-            label.setTextFormat(Qt.TextFormat.RichText)
-            label.setTextInteractionFlags(
-                qt_flags(
-                    Qt.TextInteractionFlag.TextSelectableByMouse,
-                    Qt.TextInteractionFlag.TextSelectableByKeyboard,
-                    Qt.TextInteractionFlag.LinksAccessibleByMouse,
-                )
-            )
-            label.setOpenExternalLinks(True)
-            label.setStyleSheet("color: #d4d4d4; font-size: 13px;")
-            label.setMinimumWidth(0)
-            label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
-            label.setText(html_content)
+        # If no code blocks or diagrams, use simple QLabel
+        if not code_blocks and not diagram_blocks:
+            # Simple HTML rendering
+            label = self._create_html_label(html_content)
             self._content_layout.insertWidget(self._content_layout.count() - 1, label)
             self._content_widgets.append(label)
         else:
-            # Has code blocks and/or diagrams - extract and render with copy buttons
-            html_content, code_blocks, diagram_blocks = md_to_html(visible, return_code_blocks=True)
-
             # Split HTML by block placeholders and interleave content
             # Support both BLOCK (code) and DIAGRAM (ASCII art) placeholders
             import re as _re
