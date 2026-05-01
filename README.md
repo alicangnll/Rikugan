@@ -144,6 +144,13 @@ The enhanced **Memory Corruption** skill provides comprehensive coverage of mode
   - Click any address to jump to that location in IDA/Binary Ninja disassembly view
   - Use `[FINDING:0x401000]` for bookmarked locations with custom labels
 
+- **Function Name Navigation** — Function names are automatically detected and become clickable:
+  - CamelCase functions (e.g., `generatePWFOTP`, `GenerateOTP`) are linked
+  - snake_case functions with 8+ characters (e.g., `verify_password`, `calculate_hash`) are linked
+  - Common C/C++/Python keywords and types are excluded (int, char, printf, etc.)
+  - Click any function name to jump directly to that function's definition in IDA
+  - Smart matching avoids linking common words and short identifiers
+
 - **Auto-Reload Development Mode** — Automatically reload Rikugan when source files change:
   - Enable via environment variable: `export RIKUGAN_AUTO_RELOAD=1`
   - Or use keyboard shortcut: `Ctrl+Shift+R` in IDA to toggle on/off
