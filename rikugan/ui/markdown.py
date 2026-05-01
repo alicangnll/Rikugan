@@ -541,14 +541,76 @@ def _inline_formatting(text: str) -> str:
 
     # Function names: convert to clickable links
     def _make_function_link(m: re.Match) -> str:
-        func_name = m.group(0)
+        func_name = m.group(1)
         return f'<a style="color:#4ec9b0; text-decoration:underline; font-weight:bold;" href="ida://func:{func_name}">{func_name}</a>'
 
-    # Match function names (but not after . or -> to avoid member functions being linked twice)
-    # Valid function names: start with letter or underscore, contain alphanumeric chars and underscores
-    # Examples: generatePWFOTP, generateOPTOTP, main, _start, func123
-    # Exclude: common words, type names (int, char, etc.), and keywords
-    text = re.sub(r"(?<![.\-/>])\b([a-zA-Z_][a-zA-Z0-9_]{6,})\b(?!\s*\()", _make_function_link, text)
+    # Common C/C++/Python keywords and types to exclude
+    excluded_keywords = {
+        # Types
+        'int', 'char', 'void', 'bool', 'float', 'double', 'long', 'short', 'signed', 'unsigned',
+        'size_t', 'uint8_t', 'uint16_t', 'uint32_t', 'uint64_t', 'int8_t', 'int16_t', 'int32_t', 'int64_t',
+        'byte', 'string', 'str', 'bytes',
+        # Keywords
+        'return', 'if', 'else', 'while', 'for', 'do', 'switch', 'case', 'break', 'continue',
+        'goto', 'sizeof', 'typedef', 'struct', 'class', 'union', 'enum', 'extern', 'static',
+        'const', 'volatile', 'register', 'auto', 'inline', 'restrict',
+        'true', 'false', 'null', 'nullptr', 'NULL', 'True', 'False', 'None',
+        # Common verbs
+        'print', 'printf', 'scanf', 'cout', 'cin', 'endl', 'input', 'output',
+        # Access modifiers
+        'public', 'private', 'protected', 'internal', 'virtual', 'override',
+        # Exception related
+        'throw', 'catch', 'try', 'except', 'finally', 'raise', 'assert',
+        # Other
+        'import', 'include', 'define', 'ifdef', 'ifndef', 'endif', 'elif',
+        'namespace', 'using', 'template', 'typename', 'this', 'super', 'self',
+        # Common variable names
+        'count', 'length', 'size', 'index', 'value', 'data', 'result', 'error',
+        'buffer', 'string', 'number', 'object', 'pointer', 'address',
+    }
+
+    # Match function names with these patterns:
+    # - CamelCase: generatePWFOTP, GenerateOTP
+    # - snake_case with length >= 8: generate_otp, verify_password
+    # - Functions with specific prefixes: sub_, loc_, off_ (but these are already handled by address matching)
+    # - Exclude keywords and common words
+    def _should_link_function(name: str) -> bool:
+        """Check if a name should be linked as a function."""
+        # Skip if it's an excluded keyword
+        if name.lower() in excluded_keywords:
+            return False
+
+        # Skip if it's too short (less than 6 chars)
+        if len(name) < 6:
+            return False
+
+        # Link if it's CamelCase (has both lowercase and uppercase letters)
+        if any(c.islower() for c in name) and any(c.isupper() for c in name):
+            return True
+
+        # Link if it's snake_case with underscores and length >= 8
+        if '_' in name and len(name) >= 8:
+            return True
+
+        # Link if it starts with common function prefixes
+        if any(name.startswith(prefix) for prefix in ['get', 'set', 'is', 'has', 'can', 'should', 'will', 'find', 'check', 'parse', 'format', 'convert', 'calculate', 'compute']):
+            return True
+
+        return False
+
+    # Match potential function names and filter them
+    def _function_matcher(m: re.Match) -> str:
+        func_name = m.group(1)
+        if _should_link_function(func_name):
+            return _make_function_link(m)
+        return func_name
+
+    # Match word boundaries for function names (but not after . or ->)
+    # (?<![.\-/>]) = not preceded by ., -, /, or >
+    # \b = word boundary
+    # ([a-zA-Z_][a-zA-Z0-9_]{5,}) = function name (min 6 chars total)
+    # \b(?!\s*\() = word boundary, not followed by ( (we're linking without parentheses)
+    text = re.sub(r"(?<![.\-/>])\b([a-zA-Z_][a-zA-Z0-9_]{5,})\b(?!\s*\()", _function_matcher, text)
 
     # Match various hex address formats
     # sub_401000, loc_401000, off_401000, etc. (IDA labels) - do first to avoid partial matches
