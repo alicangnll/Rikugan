@@ -449,6 +449,13 @@ class RikuganPanelCore(QWidget):
 
         self._try_restore_session()
 
+        # Connect mutation panel signal after all initialization is complete
+        if self._mutation_panel is not None and hasattr(self, '_on_undo_requested'):
+            try:
+                self._mutation_panel.undo_requested.connect(self._on_undo_requested)
+            except (AttributeError, RuntimeError) as e:
+                log_debug(f"Could not connect undo signal: {e}")
+
     def _build_tab_widget(self) -> None:
         """Create the tab widget with custom tab bar."""
         self._tab_widget = QTabWidget()
@@ -483,8 +490,6 @@ class RikuganPanelCore(QWidget):
         self._main_splitter.addWidget(self._tab_widget)
 
         self._mutation_panel = MutationLogPanel()
-        # Defer connection to after __init__ completes
-        QTimer.singleShot(0, lambda: self._mutation_panel.undo_requested.connect(self._on_undo_requested))
         self._mutation_panel.setVisible(False)
         self._main_splitter.addWidget(self._mutation_panel)
 
@@ -1338,17 +1343,24 @@ class RikuganPanelCore(QWidget):
 
         # Agent tree
         self._agent_tree = AgentTreeWidget()
-        self._agent_tree.cancel_requested.connect(self._on_cancel_agent)
-        self._agent_tree.inject_summary_requested.connect(self._on_inject_summary)
+        if hasattr(self, '_on_cancel_agent'):
+            self._agent_tree.cancel_requested.connect(self._on_cancel_agent)
+        if hasattr(self, '_on_inject_summary'):
+            self._agent_tree.inject_summary_requested.connect(self._on_inject_summary)
         self._tools_panel.set_agents_widget(self._agent_tree)
 
         # Bulk renamer
         self._bulk_renamer = BulkRenamerWidget()
-        self._bulk_renamer.start_requested.connect(self._on_renamer_start)
-        self._bulk_renamer.pause_requested.connect(self._on_renamer_pause)
-        self._bulk_renamer.cancel_requested.connect(self._on_renamer_cancel)
-        self._bulk_renamer.undo_requested.connect(self._on_renamer_undo)
-        self._bulk_renamer.seek_requested.connect(lambda addr: self._on_renamer_seek(addr))
+        if hasattr(self, '_on_renamer_start'):
+            self._bulk_renamer.start_requested.connect(self._on_renamer_start)
+        if hasattr(self, '_on_renamer_pause'):
+            self._bulk_renamer.pause_requested.connect(self._on_renamer_pause)
+        if hasattr(self, '_on_renamer_cancel'):
+            self._bulk_renamer.cancel_requested.connect(self._on_renamer_cancel)
+        if hasattr(self, '_on_renamer_undo'):
+            self._bulk_renamer.undo_requested.connect(self._on_renamer_undo)
+        if hasattr(self, '_on_renamer_seek'):
+            self._bulk_renamer.seek_requested.connect(lambda addr: self._on_renamer_seek(addr))
         self._tools_panel.set_renamer_widget(self._bulk_renamer)
 
         # Create IDA dockable form wrapper if factory is available
@@ -1357,12 +1369,13 @@ class RikuganPanelCore(QWidget):
 
         # Populate bulk renamer with functions from the binary.
         # Defer to next event-loop tick so the panel paints first.
-        QTimer.singleShot(0, self._load_renamer_functions)
+        QTimer.singleShot(0, lambda: self._load_renamer_functions() if hasattr(self, '_load_renamer_functions') else None)
 
         # Start tools polling timer
         self._tools_poll_timer = QTimer(self)
         self._tools_poll_timer.setInterval(100)
-        self._tools_poll_timer.timeout.connect(self._poll_tools_events)
+        if hasattr(self, '_poll_tools_events'):
+            self._tools_poll_timer.timeout.connect(self._poll_tools_events)
         self._tools_poll_timer.start()
 
     def _ensure_functions_initialized(self) -> None:
@@ -2064,3 +2077,12 @@ Please make the code as readable and maintainable as possible."""
             self._send_btn.setText("Queue" if running else "Send")
         if hasattr(self, '_cancel_btn'):
             self._cancel_btn.setVisible(running)
+
+    def _connect_mutation_panel_signals(self) -> None:
+        """Connect mutation panel signals after __init__ completes."""
+        try:
+            if self._mutation_panel is not None and hasattr(self, '_on_undo_requested'):
+                self._mutation_panel.undo_requested.connect(self._on_undo_requested)
+        except (AttributeError, RuntimeError) as e:
+            from ..core.logging import log_debug
+            log_debug(f"Could not connect undo signal: {e}")
