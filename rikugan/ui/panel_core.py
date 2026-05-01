@@ -953,7 +953,8 @@ class RikuganPanelCore(QWidget):
         if self._pending_answer:
             self._pending_answer = False
             chat_view.add_user_message(text)
-            self._set_running(True)
+            if hasattr(self, '_set_running'):
+                self._set_running(True)
             runner = self._ctrl.get_runner()
             if runner:
                 runner.agent_loop.submit_user_answer(text)
@@ -963,7 +964,10 @@ class RikuganPanelCore(QWidget):
             self._ctrl.queue_message(text)
             chat_view.add_queued_message(text)
             return
-        self._start_agent(text)
+        if hasattr(self, '_start_agent'):
+            self._start_agent(text)
+        else:
+            log_error("_start_agent method not found, cannot submit message")
 
     def _on_send_clicked(self) -> None:
         text = self._input_area.toPlainText().strip()
@@ -1062,7 +1066,8 @@ class RikuganPanelCore(QWidget):
         if chat_view is None:
             return
         chat_view.add_user_message(user_message)
-        self._set_running(True)
+        if hasattr(self, '_set_running'):
+            self._set_running(True)
 
         # Update tab label after first user message
         self._update_tab_label(self._ctrl.active_tab_id)
@@ -1070,7 +1075,8 @@ class RikuganPanelCore(QWidget):
         error = self._ctrl.start_agent(user_message)
         if error:
             chat_view.add_error_message(error)
-            self._set_running(False)
+            if hasattr(self, '_set_running'):
+                self._set_running(False)
             return
 
         self._ensure_poll_timer()
@@ -1158,7 +1164,8 @@ class RikuganPanelCore(QWidget):
             ) or (has_options and not allow_text)
             if needs_button:
                 self._awaiting_button_approval = True
-            self._set_running(False)
+            if hasattr(self, '_set_running'):
+                self._set_running(False)
         if event.type == TurnEventType.MUTATION_RECORDED:
             self._on_mutation_recorded(event)
 
@@ -1177,7 +1184,8 @@ class RikuganPanelCore(QWidget):
         chat_view = self._active_chat_view()
         if chat_view is not None:
             chat_view.add_user_message(answer)
-        self._set_running(True)
+        if hasattr(self, '_set_running'):
+            self._set_running(True)
         runner = self._ctrl.get_runner()
         if runner:
             runner.agent_loop.submit_user_answer(answer)
@@ -1198,7 +1206,8 @@ class RikuganPanelCore(QWidget):
         chat_view = self._active_chat_view()
         if chat_view is not None:
             chat_view.remove_queued_messages()
-        self._set_running(False)
+        if hasattr(self, '_set_running'):
+            self._set_running(False)
 
     def _try_restore_session(self) -> None:
         restored = self._ctrl.restore_sessions()
@@ -1327,9 +1336,111 @@ class RikuganPanelCore(QWidget):
         if address is not None and hasattr(self, "_bulk_renamer"):
             self._bulk_renamer.select_and_filter_address(address)
 
+    def _load_renamer_functions(self) -> None:
+        """Populate the bulk renamer widget with functions from the binary.
+
+        Fetches pages of functions one at a time via QTimer so the UI thread
+        stays responsive between pages (avoids blocking on large binaries).
+        """
+        if not hasattr(self, "_bulk_renamer"):
+            log_debug("_bulk_renamer not initialized yet")
+            return
+
+        log_debug("Loading functions for bulk renamer...")
+
+        tool_registry = self._ctrl.get_tool_registry()
+        defn = tool_registry.get("list_functions")
+        if defn is None or defn.handler is None:
+            log_error("list_functions tool not available — renamer table will be empty")
+            log_debug(f"Tool registry has {len(tool_registry._tools) if hasattr(tool_registry, '_tools') else 0} tools")
+            return
+
+        log_debug("list_functions tool found, starting to fetch...")
+
+        # State for the incremental page fetcher
+        self._renamer_load_funcs: list[dict] = []
+        self._renamer_load_offset = 0
+        self._renamer_load_batch = 500
+        self._renamer_load_defn = defn
+
+        self._renamer_fetch_timer = QTimer(self)
+        self._renamer_fetch_timer.setInterval(0)
+        if hasattr(self, '_fetch_renamer_page'):
+            self._renamer_fetch_timer.timeout.connect(self._fetch_renamer_page)
+            self._renamer_fetch_timer.start()
+            log_debug("Renamer fetch timer started")
+        else:
+            log_error("_fetch_renamer_page method not found")
+
+    def _fetch_renamer_page(self) -> None:
+        """Fetch one page of functions and schedule the next or finish."""
+        defn = self._renamer_load_defn
+        offset = self._renamer_load_offset
+        batch = self._renamer_load_batch
+
+        log_debug(f"Fetching renamer page: offset={offset}, batch={batch}")
+
+        try:
+            raw = defn.handler(offset=offset, limit=batch)
+            if raw:
+                log_debug(f"list_functions returned {len(raw.splitlines())} lines")
+            else:
+                log_debug(f"list_functions returned None at offset {offset}")
+        except Exception as e:
+            log_error(f"list_functions failed at offset {offset}: {e}")
+            import traceback
+            log_debug(traceback.format_exc())
+            raw = None
+
+        page_count = 0
+        if raw:
+            for line in raw.splitlines():
+                m = re.match(r"\s*0x([0-9a-fA-F]+)\s+(.+)", line)
+                if m:
+                    self._renamer_load_funcs.append(
+                        {
+                            "address": int(m.group(1), 16),
+                            "name": m.group(2).strip(),
+                            "is_import": False,
+                            "instruction_count": 0,
+                        }
+                    )
+                    page_count += 1
+
+        log_debug(f"Fetched {page_count} functions in this page (total so far: {len(self._renamer_load_funcs)})")
+
+        if page_count >= batch:
+            # More pages to fetch
+            self._renamer_load_offset += batch
+            log_debug(f"Fetching next page, new offset: {self._renamer_load_offset}")
+            return
+
+        # All pages fetched — stop timer and load into widget
+        self._renamer_fetch_timer.stop()
+        self._renamer_fetch_timer.deleteLater()
+        self._renamer_fetch_timer = None
+
+        functions = self._renamer_load_funcs
+
+        # Approximate function size from consecutive addresses
+        for i in range(len(functions) - 1):
+            functions[i]["instruction_count"] = functions[i + 1]["address"] - functions[i]["address"]
+
+        if functions:
+            log_debug(f"Loading {len(functions)} functions into bulk renamer widget...")
+            self._bulk_renamer.load_functions(functions)
+            log_info(f"Loaded {len(functions)} functions into bulk renamer")
+        else:
+            log_error("No functions found for bulk renamer - widget will be empty")
+
+        # Clean up temporary state
+        self._renamer_load_funcs = []
+        self._renamer_load_defn = None
+
     def _ensure_tools_initialized(self) -> None:
         """Lazily initialize tools panel contents on first open."""
         if getattr(self, "_tools_initialized", False):
+            log_debug("Tools panel already initialized")
             return
         if getattr(self, "_tools_panel", None) is None:
             # Recreate tools panel if it was destroyed
@@ -1337,6 +1448,7 @@ class RikuganPanelCore(QWidget):
             self._tools_panel = ToolsPanel()
             self._tools_panel.hide_header()
         self._tools_initialized = True
+        log_info("Initializing tools panel...")
 
         from .agent_tree import AgentTreeWidget
         from .bulk_renamer import BulkRenamerWidget
@@ -1368,8 +1480,8 @@ class RikuganPanelCore(QWidget):
             self._tools_form = self._tools_form_factory(self._tools_panel)
 
         # Populate bulk renamer with functions from the binary.
-        # Defer to next event-loop tick so the panel paints first.
-        QTimer.singleShot(0, lambda: self._load_renamer_functions() if hasattr(self, '_load_renamer_functions') else None)
+        # Defer to next event-loop tick so the panel paints first
+        QTimer.singleShot(0, self._load_renamer_functions)
 
         # Start tools polling timer
         self._tools_poll_timer = QTimer(self)
@@ -1381,8 +1493,10 @@ class RikuganPanelCore(QWidget):
     def _ensure_functions_initialized(self) -> None:
         """Lazily initialize functions panel contents on first open."""
         if getattr(self, "_functions_initialized", False):
+            log_debug("Functions panel already initialized")
             return
         self._functions_initialized = True
+        log_debug("Initializing functions panel...")
 
         # Remove placeholder and add real functions page
         if self._functions_page is None:
@@ -1513,9 +1627,11 @@ class RikuganPanelCore(QWidget):
             elif is_binary_ninja():
                 self._load_binary_ninja_functions_data(filter_text)
             else:
-                pass  # No functions
+                log_debug("No supported host found for functions loading")
         except Exception as e:
-            pass
+            log_error(f"Error loading functions: {e}")
+            import traceback
+            log_debug(traceback.format_exc())
 
         # Update pagination
         self._update_functions_page()
@@ -1526,17 +1642,25 @@ class RikuganPanelCore(QWidget):
             import idautils
             import ida_name
 
+            function_count = 0
             for func_ea in idautils.Functions():
                 func_name = ida_name.get_name(func_ea)
+                if not func_name:
+                    continue
 
                 # Filter by search text
                 if filter_text and filter_text.lower() not in func_name.lower():
                     continue
 
                 self._functions_filtered_data.append((func_name, func_ea))
+                function_count += 1
+
+            log_debug(f"Loaded {function_count} IDA functions (filter: '{filter_text}')")
 
         except Exception as e:
-            pass
+            log_error(f"Error loading IDA functions: {e}")
+            import traceback
+            log_debug(traceback.format_exc())
 
     def _load_binary_ninja_functions_data(self, filter_text: str = "") -> None:
         """Load Binary Ninja functions into filtered data list."""
@@ -1544,19 +1668,28 @@ class RikuganPanelCore(QWidget):
             from ..core import host
 
             if not host._bn:
+                log_debug("Binary Ninja instance not available")
                 return
 
+            function_count = 0
             for func in host._bn.functions():
                 func_name = func.name
+                if not func_name:
+                    continue
 
                 # Filter by search text
                 if filter_text and filter_text.lower() not in func_name.lower():
                     continue
 
                 self._functions_filtered_data.append((func_name, func.start))
+                function_count += 1
+
+            log_debug(f"Loaded {function_count} Binary Ninja functions (filter: '{filter_text}')")
 
         except Exception as e:
-            pass
+            log_error(f"Error loading Binary Ninja functions: {e}")
+            import traceback
+            log_debug(traceback.format_exc())
 
     def _update_functions_page(self) -> None:
         """Update the function list with current page data."""
@@ -1571,10 +1704,12 @@ class RikuganPanelCore(QWidget):
 
         # Show current page
         page_data = self._functions_filtered_data[start_idx:end_idx]
+        display_count = 0
         for func_name, func_addr in page_data:
             item = QListWidgetItem(f"{func_name} @ 0x{func_addr:X}")
             item.setData(Qt.ItemDataRole.UserRole, (func_name, func_addr))
             self._functions_list.addItem(item)
+            display_count += 1
 
         # Update page label
         total_pages = (len(self._functions_filtered_data) + self._functions_page_size - 1) // self._functions_page_size
@@ -1583,6 +1718,8 @@ class RikuganPanelCore(QWidget):
         # Update button states
         self._functions_prev_btn.setEnabled(self._functions_page_num > 0)
         self._functions_next_btn.setEnabled(self._functions_page_num < total_pages - 1)
+
+        log_debug(f"Functions page updated: showing {display_count} functions (total: {len(self._functions_filtered_data)}, page {self._functions_page_num + 1}/{total_pages})")
 
     def _on_functions_page_changed(self, delta: int) -> None:
         """Handle pagination button click."""
@@ -1805,13 +1942,19 @@ Please make the code as readable and maintainable as possible."""
         stays responsive between pages (avoids blocking on large binaries).
         """
         if not hasattr(self, "_bulk_renamer"):
+            log_debug("_bulk_renamer not initialized yet")
             return
+
+        log_debug("Loading functions for bulk renamer...")
 
         tool_registry = self._ctrl.get_tool_registry()
         defn = tool_registry.get("list_functions")
         if defn is None or defn.handler is None:
-            log_info("list_functions tool not available — renamer table will be empty")
+            log_error("list_functions tool not available — renamer table will be empty")
+            log_debug(f"Tool registry has {len(tool_registry._tools) if hasattr(tool_registry, '_tools') else 0} tools")
             return
+
+        log_debug("list_functions tool found, starting to fetch...")
 
         # State for the incremental page fetcher
         self._renamer_load_funcs: list[dict] = []
@@ -1821,8 +1964,12 @@ Please make the code as readable and maintainable as possible."""
 
         self._renamer_fetch_timer = QTimer(self)
         self._renamer_fetch_timer.setInterval(0)
-        self._renamer_fetch_timer.timeout.connect(self._fetch_renamer_page)
-        self._renamer_fetch_timer.start()
+        if hasattr(self, '_fetch_renamer_page'):
+            self._renamer_fetch_timer.timeout.connect(self._fetch_renamer_page)
+            self._renamer_fetch_timer.start()
+            log_debug("Renamer fetch timer started")
+        else:
+            log_error("_fetch_renamer_page method not found")
 
     def _fetch_renamer_page(self) -> None:
         """Fetch one page of functions and schedule the next or finish."""
@@ -1830,10 +1977,18 @@ Please make the code as readable and maintainable as possible."""
         offset = self._renamer_load_offset
         batch = self._renamer_load_batch
 
+        log_debug(f"Fetching renamer page: offset={offset}, batch={batch}")
+
         try:
             raw = defn.handler(offset=offset, limit=batch)
+            if raw:
+                log_debug(f"list_functions returned {len(raw.splitlines())} lines")
+            else:
+                log_debug(f"list_functions returned None at offset {offset}")
         except Exception as e:
             log_error(f"list_functions failed at offset {offset}: {e}")
+            import traceback
+            log_debug(traceback.format_exc())
             raw = None
 
         page_count = 0
@@ -1851,9 +2006,12 @@ Please make the code as readable and maintainable as possible."""
                     )
                     page_count += 1
 
+        log_debug(f"Fetched {page_count} functions in this page (total so far: {len(self._renamer_load_funcs)})")
+
         if page_count >= batch:
             # More pages to fetch
             self._renamer_load_offset += batch
+            log_debug(f"Fetching next page, new offset: {self._renamer_load_offset}")
             return
 
         # All pages fetched — stop timer and load into widget
@@ -1868,10 +2026,11 @@ Please make the code as readable and maintainable as possible."""
             functions[i]["instruction_count"] = functions[i + 1]["address"] - functions[i]["address"]
 
         if functions:
+            log_debug(f"Loading {len(functions)} functions into bulk renamer widget...")
             self._bulk_renamer.load_functions(functions)
             log_info(f"Loaded {len(functions)} functions into bulk renamer")
         else:
-            log_info("No functions found for bulk renamer")
+            log_error("No functions found for bulk renamer - widget will be empty")
 
         # Clean up temporary state
         self._renamer_load_funcs = []
