@@ -483,7 +483,8 @@ class RikuganPanelCore(QWidget):
         self._main_splitter.addWidget(self._tab_widget)
 
         self._mutation_panel = MutationLogPanel()
-        self._mutation_panel.undo_requested.connect(self._on_undo_requested)
+        # Defer connection to after __init__ completes
+        QTimer.singleShot(0, lambda: self._mutation_panel.undo_requested.connect(self._on_undo_requested))
         self._mutation_panel.setVisible(False)
         self._main_splitter.addWidget(self._mutation_panel)
 
@@ -1266,11 +1267,13 @@ class RikuganPanelCore(QWidget):
         self._mode_stack.setCurrentIndex(index)
         if index == 1:
             self._ensure_tools_initialized()
-            self._tools_btn.setChecked(True)
+            if hasattr(self, '_tools_btn'):
+                self._tools_btn.setChecked(True)
         elif index == 2:
             self._ensure_functions_initialized()
         else:
-            self._tools_btn.setChecked(False)
+            if hasattr(self, '_tools_btn'):
+                self._tools_btn.setChecked(False)
 
     def _on_toggle_tools(self) -> None:
         """Toggle the Tools view (IDA-docked or embedded mode tab)."""
@@ -1323,7 +1326,7 @@ class RikuganPanelCore(QWidget):
         """Lazily initialize tools panel contents on first open."""
         if getattr(self, "_tools_initialized", False):
             return
-        if self._tools_panel is None:
+        if getattr(self, "_tools_panel", None) is None:
             # Recreate tools panel if it was destroyed
             from .tools_panel import ToolsPanel
             self._tools_panel = ToolsPanel()
