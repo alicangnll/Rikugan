@@ -677,8 +677,7 @@ class AssistantMessageWidget(QFrame):
         """Jump to function by name in IDA."""
         try:
             from ..core.host import is_ida, navigate_to_address
-            from ..core.logging import log_info, log_debug, log_error
-            import re
+            from ..core.logging import log_info, log_debug, log_error, log_warning
 
             if not is_ida():
                 log_debug(f"Not running in IDA, cannot jump to function: {func_name}")
@@ -686,46 +685,71 @@ class AssistantMessageWidget(QFrame):
 
             # Try to find the function in IDA
             from ..core import host
-            if host._idaapi:
-                # Try to get function by name
-                func_addr = host._idaapi.get_name_ea_simple(func_name)
 
-                if func_addr == host._idaapi.BADADDR:
-                    # Function not found, try case-insensitive search
-                    log_debug(f"Function '{func_name}' not found, trying case-insensitive search...")
+            if not host._idaapi:
+                log_debug("IDA API not available")
+                return
 
-                    # Get all function names and try to match
-                    for func_ea in host._idaapi.Functions():
+            # Try exact match first
+            func_addr = host._idaapi.get_name_ea_simple(func_name)
+            found_name = func_name
+
+            if func_addr == host._idaapi.BADADDR:
+                # Function not found, try case-insensitive search
+                log_debug(f"Function '{func_name}' not found with exact match, trying case-insensitive search...")
+
+                # Get all function names and try to match
+                for func_ea in host._idaapi.Functions():
+                    try:
                         current_name = host._idaapi.get_func_name(func_ea)
-                        if current_name.lower() == func_name.lower():
+                        if current_name and current_name.lower() == func_name.lower():
                             func_addr = func_ea
+                            found_name = current_name
                             log_info(f"Found function '{current_name}' at 0x{func_addr:X}")
                             break
+                    except Exception:
+                        continue
 
-                    if func_addr == host._idaapi.BADADDR:
-                        # Try partial match (substring)
-                        for func_ea in host._idaapi.Functions():
-                            current_name = host._idaapi.get_func_name(func_ea)
-                            if func_name.lower() in current_name.lower():
-                                func_addr = func_ea
-                                log_info(f"Found similar function '{current_name}' at 0x{func_addr:X}")
-                                break
+            if func_addr == host._idaapi.BADADDR:
+                # Try partial match (substring)
+                log_debug(f"Still not found, trying partial match...")
+                for func_ea in host._idaapi.Functions():
+                    try:
+                        current_name = host._idaapi.get_func_name(func_ea)
+                        if current_name and func_name.lower() in current_name.lower():
+                            func_addr = func_ea
+                            found_name = current_name
+                            log_info(f"Found similar function '{current_name}' at 0x{func_addr:X}")
+                            break
+                    except Exception:
+                        continue
 
-                if func_addr != host._idaapi.BADADDR:
-                    # Jump to function
-                    log_info(f"Jumping to function '{func_name}' at 0x{func_addr:X}")
-                    success = navigate_to_address(func_addr)
-                    if not success:
-                        log_debug(f"Failed to jump to function '{func_name}' at 0x{func_addr:X}")
-                else:
-                    log_debug(f"Function '{func_name}' not found in IDA database")
-                    # Show user-friendly message
-                    from ..core.logging import log_warning
-                    log_warning(f"Could not find function '{func_name}'. Make sure the function exists in the current database.")
+            if func_addr != host._idaapi.BADADDR:
+                # Jump to function
+                log_info(f"Jumping to function '{found_name}' at 0x{func_addr:X}")
+                success = navigate_to_address(func_addr)
+                if not success:
+                    log_warning(f"Failed to jump to function '{found_name}' at 0x{func_addr:X}")
+            else:
+                log_warning(f"Function '{func_name}' not found in IDA database")
+                # List some available functions for debugging
+                available_funcs = []
+                for func_ea in host._idaapi.Functions():
+                    try:
+                        current_name = host._idaapi.get_func_name(func_ea)
+                        if current_name:
+                            available_funcs.append(current_name)
+                        if len(available_funcs) >= 10:
+                            break
+                    except Exception:
+                        continue
+                log_debug(f"Available functions: {', '.join(available_funcs[:10])}")
 
         except Exception as e:
             from ..core.logging import log_error
             log_error(f"Failed to jump to function {func_name}: {e}")
+            import traceback
+            log_error(f"Traceback: {traceback.format_exc()}")
 
     def _jump_to_finding(self, address_str: str) -> None:
         """Jump to finding and display bookmark details."""
