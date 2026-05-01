@@ -25,6 +25,10 @@ from .qt_compat import (
     QDialogButtonBox,
     QFileDialog,
     QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QListWidgetItem,
     QMenu,
     QMessageBox,
     QPushButton,
@@ -1387,7 +1391,6 @@ class RikuganPanelCore(QWidget):
             functions_layout.addWidget(self._functions_search)
 
             # Function list
-            from .qt_compat import QListWidget, QListWidgetItem, QSplitter
             self._functions_list = QListWidget()
             self._functions_list.setStyleSheet(
                 "QListWidget {"
@@ -1470,7 +1473,6 @@ class RikuganPanelCore(QWidget):
                 if filter_text and filter_text.lower() not in func_name.lower():
                     continue
 
-                from .qt_compat import QListWidgetItem
                 item = QListWidgetItem(f"{func_name} @ 0x{func_ea:X}")
                 item.setData(Qt.ItemDataRole.UserRole, (func_name, func_ea))
                 self._functions_list.addItem(item)
@@ -1494,7 +1496,6 @@ class RikuganPanelCore(QWidget):
                 if filter_text and filter_text.lower() not in func_name.lower():
                     continue
 
-                from .qt_compat import QListWidgetItem
                 item = QListWidgetItem(f"{func_name} @ {func.start}")
                 item.setData(Qt.ItemDataRole.UserRole, (func_name, func.start))
                 self._functions_list.addItem(item)
