@@ -690,41 +690,50 @@ class AssistantMessageWidget(QFrame):
                 log_debug("IDA API not available")
                 return
 
-            # Try exact match first
-            func_addr = host._idaapi.get_name_ea_simple(func_name)
+            # Try exact match first using compatible APIs
+            func_addr = None
             found_name = func_name
 
-            if func_addr == host._idaapi.BADADDR:
-                # Function not found, try case-insensitive search
-                log_debug(f"Function '{func_name}' not found with exact match, trying case-insensitive search...")
+            # Method 1: Try ida_name.get_name_ea (most compatible)
+            try:
+                import ida_name
+                func_addr = ida_name.get_name_ea(0, func_name)
+                if func_addr != host._idaapi.BADADDR:
+                    log_info(f"Found function '{func_name}' at 0x{func_addr:X} using ida_name")
+            except Exception as e:
+                log_debug(f"ida_name.get_name_ea failed: {e}")
 
-                # Get all function names and try to match
-                for func_ea in host._idaapi.Functions():
-                    try:
-                        current_name = host._idaapi.get_func_name(func_ea)
+            # Method 2: Try idautils.Functions() if method 1 failed
+            if func_addr is None or func_addr == host._idaapi.BADADDR:
+                try:
+                    import idautils
+                    import ida_name
+                    for func_ea in idautils.Functions():
+                        current_name = ida_name.get_name(func_ea)
+                        if current_name == func_name:
+                            func_addr = func_ea
+                            found_name = current_name
+                            log_info(f"Found function '{current_name}' at 0x{func_addr:X} using idautils")
+                            break
+                except Exception as e:
+                    log_debug(f"idautils.Functions() failed: {e}")
+
+            # Method 3: Case-insensitive search
+            if func_addr is None or func_addr == host._idaapi.BADADDR:
+                try:
+                    import idautils
+                    import ida_name
+                    for func_ea in idautils.Functions():
+                        current_name = ida_name.get_name(func_ea)
                         if current_name and current_name.lower() == func_name.lower():
                             func_addr = func_ea
                             found_name = current_name
-                            log_info(f"Found function '{current_name}' at 0x{func_addr:X}")
+                            log_info(f"Found function '{current_name}' at 0x{func_addr:X} using case-insensitive search")
                             break
-                    except Exception:
-                        continue
+                except Exception as e:
+                    log_debug(f"Case-insensitive search failed: {e}")
 
-            if func_addr == host._idaapi.BADADDR:
-                # Try partial match (substring)
-                log_debug(f"Still not found, trying partial match...")
-                for func_ea in host._idaapi.Functions():
-                    try:
-                        current_name = host._idaapi.get_func_name(func_ea)
-                        if current_name and func_name.lower() in current_name.lower():
-                            func_addr = func_ea
-                            found_name = current_name
-                            log_info(f"Found similar function '{current_name}' at 0x{func_addr:X}")
-                            break
-                    except Exception:
-                        continue
-
-            if func_addr != host._idaapi.BADADDR:
+            if func_addr and func_addr != host._idaapi.BADADDR:
                 # Jump to function
                 log_info(f"Jumping to function '{found_name}' at 0x{func_addr:X}")
                 success = navigate_to_address(func_addr)
@@ -732,18 +741,6 @@ class AssistantMessageWidget(QFrame):
                     log_warning(f"Failed to jump to function '{found_name}' at 0x{func_addr:X}")
             else:
                 log_warning(f"Function '{func_name}' not found in IDA database")
-                # List some available functions for debugging
-                available_funcs = []
-                for func_ea in host._idaapi.Functions():
-                    try:
-                        current_name = host._idaapi.get_func_name(func_ea)
-                        if current_name:
-                            available_funcs.append(current_name)
-                        if len(available_funcs) >= 10:
-                            break
-                    except Exception:
-                        continue
-                log_debug(f"Available functions: {', '.join(available_funcs[:10])}")
 
         except Exception as e:
             from ..core.logging import log_error

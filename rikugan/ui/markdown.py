@@ -544,8 +544,9 @@ def _inline_formatting(text: str) -> str:
         func_name = m.group(1)
         return f'<a style="color:#4ec9b0; text-decoration:underline; font-weight:bold;" href="ida://func:{func_name}">{func_name}</a>()'
 
-    # Match function calls like generatePWFOTP(), setDigitalLoginPassword()
-    text = re.sub(r"\b([a-zA-Z_][a-zA-Z0-9_]{3,})\(\)", _make_function_call_link, text)
+    # Match function calls like generatePWFOTP(), setDigitalLoginPassword(), ArraysUtil$1.compare@ILL()
+    # Support alphanumeric, underscore, $, @, and other common function name characters
+    text = re.sub(r"\b([a-zA-Z_][a-zA-Z0-9_$@.]{3,})\(\)", _make_function_call_link, text)
 
     # Match various hex address formats
     # sub_401000, loc_401000, off_401000, etc. (IDA labels) - do first to avoid partial matches
