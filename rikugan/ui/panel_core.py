@@ -287,6 +287,9 @@ class RikuganPanelCore(QWidget):
         threading.Thread(target=_warm_oauth, daemon=True).start()
         self._build_ui()
 
+        # Connect signals after all methods are defined
+        QTimer.singleShot(0, self._connect_deferred_signals)
+
     def _prompt_decryption_password(self) -> None:
         """Prompt for the encryption password at session start."""
         from .qt_compat import QDialog, QDialogButtonBox, QLabel, QLineEdit, QMessageBox, QVBoxLayout
@@ -483,8 +486,8 @@ class RikuganPanelCore(QWidget):
         self._main_splitter.addWidget(self._tab_widget)
 
         self._mutation_panel = MutationLogPanel()
-        # Defer connection to after __init__ completes
-        QTimer.singleShot(0, lambda: self._mutation_panel.undo_requested.connect(self._on_undo_requested))
+        # Store reference for later connection
+        self._mutation_panel_undo_signal = self._mutation_panel.undo_requested
         self._mutation_panel.setVisible(False)
         self._main_splitter.addWidget(self._mutation_panel)
 
@@ -2064,3 +2067,8 @@ Please make the code as readable and maintainable as possible."""
             self._send_btn.setText("Queue" if running else "Send")
         if hasattr(self, '_cancel_btn'):
             self._cancel_btn.setVisible(running)
+
+    def _connect_deferred_signals(self) -> None:
+        """Connect signals that were deferred during __init__."""
+        if hasattr(self, '_mutation_panel_undo_signal'):
+            self._mutation_panel_undo_signal.connect(self._on_undo_requested)
