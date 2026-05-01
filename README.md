@@ -151,6 +151,17 @@ The enhanced **Memory Corruption** skill provides comprehensive coverage of mode
   - Click any function name to jump directly to that function's definition in IDA
   - Smart matching avoids linking common words and short identifiers
 
+  **Example Usage:**
+  ```
+  User: What does the generatePWFOTP function do?
+  Rikugan: Let me analyze generatePWFOTP for you...
+  [Click on generatePWFOTP to jump to the function]
+
+  User: Check the verify_password function
+  Rikugan: I'll examine verify_password()...
+  [Click on verify_password to jump to the function]
+  ```
+
 - **Auto-Reload Development Mode** — Automatically reload Rikugan when source files change:
   - Enable via environment variable: `export RIKUGAN_AUTO_RELOAD=1`
   - Or use keyboard shortcut: `Ctrl+Shift+R` in IDA to toggle on/off
