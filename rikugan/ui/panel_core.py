@@ -287,9 +287,6 @@ class RikuganPanelCore(QWidget):
         threading.Thread(target=_warm_oauth, daemon=True).start()
         self._build_ui()
 
-        # Connect signals after all methods are defined
-        QTimer.singleShot(0, self._connect_deferred_signals)
-
     def _prompt_decryption_password(self) -> None:
         """Prompt for the encryption password at session start."""
         from .qt_compat import QDialog, QDialogButtonBox, QLabel, QLineEdit, QMessageBox, QVBoxLayout
@@ -486,6 +483,8 @@ class RikuganPanelCore(QWidget):
         self._main_splitter.addWidget(self._tab_widget)
 
         self._mutation_panel = MutationLogPanel()
+        # Defer connection to after __init__ completes
+        QTimer.singleShot(0, lambda: self._mutation_panel.undo_requested.connect(self._on_undo_requested))
         self._mutation_panel.setVisible(False)
         self._main_splitter.addWidget(self._mutation_panel)
 
@@ -1339,10 +1338,8 @@ class RikuganPanelCore(QWidget):
 
         # Agent tree
         self._agent_tree = AgentTreeWidget()
-        if hasattr(self, '_on_cancel_agent'):
-            self._agent_tree.cancel_requested.connect(self._on_cancel_agent)
-        if hasattr(self, '_on_inject_summary'):
-            self._agent_tree.inject_summary_requested.connect(self._on_inject_summary)
+        self._agent_tree.cancel_requested.connect(self._on_cancel_agent)
+        self._agent_tree.inject_summary_requested.connect(self._on_inject_summary)
         self._tools_panel.set_agents_widget(self._agent_tree)
 
         # Bulk renamer
@@ -2067,11 +2064,3 @@ Please make the code as readable and maintainable as possible."""
             self._send_btn.setText("Queue" if running else "Send")
         if hasattr(self, '_cancel_btn'):
             self._cancel_btn.setVisible(running)
-
-    def _connect_deferred_signals(self) -> None:
-        """Connect signals that were deferred during __init__."""
-        if hasattr(self, '_mutation_panel') and self._mutation_panel:
-            try:
-                self._mutation_panel.undo_requested.connect(self._on_undo_requested)
-            except AttributeError:
-                pass  # Method might not exist yet, will be connected later
