@@ -1453,10 +1453,20 @@ class RikuganPanelCore(QWidget):
         log_debug("Loading functions for bulk renamer...")
 
         tool_registry = self._ctrl.get_tool_registry()
+        log_debug(f"Tool registry: {type(tool_registry)}, has {len(tool_registry._tools) if hasattr(tool_registry, '_tools') else 'unknown'} tools")
+
+        # Debug: list all available tools
+        if hasattr(tool_registry, '_tools'):
+            tool_names = list(tool_registry._tools.keys())
+            log_debug(f"Available tools: {tool_names[:15]}...")  # Show first 15
+
         defn = tool_registry.get("list_functions")
         if defn is None or defn.handler is None:
             log_error("list_functions tool not available — renamer table will be empty")
-            log_debug(f"Tool registry has {len(tool_registry._tools) if hasattr(tool_registry, '_tools') else 0} tools")
+            log_debug(f"Tool registry type: {type(tool_registry)}")
+            log_debug(f"list_functions found: {defn is not None}")
+            if defn is not None:
+                log_debug(f"list_functions.handler: {defn.handler}")
             return
 
         log_debug("list_functions tool found, starting to fetch...")
@@ -2038,107 +2048,6 @@ Please make the code as readable and maintainable as possible."""
             max_workers=max_workers,
             subagent_manager=self._get_or_create_subagent_manager(),
         )
-
-    def _load_renamer_functions(self) -> None:
-        """Populate the bulk renamer widget with functions from the binary.
-
-        Fetches pages of functions one at a time via QTimer so the UI thread
-        stays responsive between pages (avoids blocking on large binaries).
-        """
-        if not hasattr(self, "_bulk_renamer"):
-            log_debug("_bulk_renamer not initialized yet")
-            return
-
-        log_debug("Loading functions for bulk renamer...")
-
-        tool_registry = self._ctrl.get_tool_registry()
-        defn = tool_registry.get("list_functions")
-        if defn is None or defn.handler is None:
-            log_error("list_functions tool not available — renamer table will be empty")
-            log_debug(f"Tool registry has {len(tool_registry._tools) if hasattr(tool_registry, '_tools') else 0} tools")
-            return
-
-        log_debug("list_functions tool found, starting to fetch...")
-
-        # State for the incremental page fetcher
-        self._renamer_load_funcs: list[dict] = []
-        self._renamer_load_offset = 0
-        self._renamer_load_batch = 500
-        self._renamer_load_defn = defn
-
-        self._renamer_fetch_timer = QTimer(self)
-        self._renamer_fetch_timer.setInterval(0)
-        if hasattr(self, '_fetch_renamer_page'):
-            self._renamer_fetch_timer.timeout.connect(self._fetch_renamer_page)
-            self._renamer_fetch_timer.start()
-            log_debug("Renamer fetch timer started")
-        else:
-            log_error("_fetch_renamer_page method not found")
-
-    def _fetch_renamer_page(self) -> None:
-        """Fetch one page of functions and schedule the next or finish."""
-        defn = self._renamer_load_defn
-        offset = self._renamer_load_offset
-        batch = self._renamer_load_batch
-
-        log_debug(f"Fetching renamer page: offset={offset}, batch={batch}")
-
-        try:
-            raw = defn.handler(offset=offset, limit=batch)
-            if raw:
-                log_debug(f"list_functions returned {len(raw.splitlines())} lines")
-            else:
-                log_debug(f"list_functions returned None at offset {offset}")
-        except Exception as e:
-            log_error(f"list_functions failed at offset {offset}: {e}")
-            import traceback
-            log_debug(traceback.format_exc())
-            raw = None
-
-        page_count = 0
-        if raw:
-            for line in raw.splitlines():
-                m = re.match(r"\s*0x([0-9a-fA-F]+)\s+(.+)", line)
-                if m:
-                    self._renamer_load_funcs.append(
-                        {
-                            "address": int(m.group(1), 16),
-                            "name": m.group(2).strip(),
-                            "is_import": False,
-                            "instruction_count": 0,
-                        }
-                    )
-                    page_count += 1
-
-        log_debug(f"Fetched {page_count} functions in this page (total so far: {len(self._renamer_load_funcs)})")
-
-        if page_count >= batch:
-            # More pages to fetch
-            self._renamer_load_offset += batch
-            log_debug(f"Fetching next page, new offset: {self._renamer_load_offset}")
-            return
-
-        # All pages fetched — stop timer and load into widget
-        self._renamer_fetch_timer.stop()
-        self._renamer_fetch_timer.deleteLater()
-        self._renamer_fetch_timer = None
-
-        functions = self._renamer_load_funcs
-
-        # Approximate function size from consecutive addresses
-        for i in range(len(functions) - 1):
-            functions[i]["instruction_count"] = functions[i + 1]["address"] - functions[i]["address"]
-
-        if functions:
-            log_debug(f"Loading {len(functions)} functions into bulk renamer widget...")
-            self._bulk_renamer.load_functions(functions)
-            log_info(f"Loaded {len(functions)} functions into bulk renamer")
-        else:
-            log_error("No functions found for bulk renamer - widget will be empty")
-
-        # Clean up temporary state
-        self._renamer_load_funcs = []
-        self._renamer_load_defn = None
 
     # --- Tools panel event handlers ---
 
