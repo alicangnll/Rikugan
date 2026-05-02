@@ -450,9 +450,33 @@ class RikuganPanelCore(QWidget):
         self._try_restore_session()
 
         # Connect mutation panel signal after all initialization is complete
+        # This must happen AFTER _try_restore_session() to ensure the panel is fully initialized
+        QTimer.singleShot(0, self._connect_mutation_panel_signals)
+
+    def _connect_mutation_panel_signals(self) -> None:
+        """Connect mutation panel signals after all initialization is complete.
+
+        This is called at the end of __init__ to ensure all methods are defined
+        before connecting signals. Must be disconnected in shutdown() before
+        widget destruction to prevent dangling slot references.
+        """
         if self._mutation_panel is not None and hasattr(self, '_on_undo_requested'):
             try:
-                self._mutation_panel.undo_requested.connect(self._on_undo_requested)
+                # Use Qt.UniqueConnection to prevent duplicate connections
+                from PyQt5.QtCore import Qt as QtCore
+                if hasattr(QtCore, 'UniqueConnection'):
+                    self._mutation_panel.undo_requested.connect(
+                        self._on_undo_requested,
+                        QtCore.UniqueConnection
+                    )
+                else:
+                    # Fallback for older Qt versions
+                    try:
+                        self._mutation_panel.undo_requested.disconnect(self._on_undo_requested)
+                    except (RuntimeError, TypeError):
+                        pass  # Not connected yet
+                    self._mutation_panel.undo_requested.connect(self._on_undo_requested)
+                log_debug("Connected mutation panel undo_requested signal")
             except (AttributeError, RuntimeError) as e:
                 log_debug(f"Could not connect undo signal: {e}")
 
@@ -650,6 +674,15 @@ class RikuganPanelCore(QWidget):
         chat_view = self._chat_views.pop(tab_id, None)
         self._tab_widget.removeTab(index)
         if chat_view:
+            # Disconnect chat view signals before deletion to prevent
+            # dangling slot references during Qt widget destruction
+            try:
+                if hasattr(chat_view, '_tool_approval_callback') and hasattr(self, '_on_tool_approval'):
+                    chat_view.set_tool_approval_callback(None)
+                if hasattr(chat_view, '_user_answer_callback') and hasattr(self, '_on_user_answer_submitted'):
+                    chat_view.set_user_answer_callback(None)
+            except (RuntimeError, TypeError) as e:
+                log_debug(f"Chat view disconnect failed: {e}")
             chat_view.shutdown()
             chat_view.deleteLater()
         # Clean up per-tab state
@@ -893,6 +926,41 @@ class RikuganPanelCore(QWidget):
         try:
             tools_form = getattr(self, "_tools_form", None)
             tools_panel = getattr(self, "_tools_panel", None)
+
+            # Disconnect mutation panel signal BEFORE any widget destruction
+            # to prevent dangling slot references during Qt cleanup
+            mutation_panel = getattr(self, "_mutation_panel", None)
+            if mutation_panel is not None and hasattr(self, '_on_undo_requested'):
+                try:
+                    mutation_panel.undo_requested.disconnect(self._on_undo_requested)
+                    log_debug("Disconnected mutation panel undo_requested signal")
+                except (RuntimeError, TypeError) as e:
+                    log_debug(f"Mutation panel disconnect failed (already destroyed?): {e}")
+
+            # Disconnect tools panel signals
+            if tools_panel is not None:
+                try:
+                    if hasattr(tools_panel, '_agents_widget'):
+                        aw = tools_panel._agents_widget
+                        if hasattr(aw, 'cancel_requested') and hasattr(self, '_on_cancel_agent'):
+                            aw.cancel_requested.disconnect(self._on_cancel_agent)
+                        if hasattr(aw, 'inject_summary_requested') and hasattr(self, '_on_inject_summary'):
+                            aw.inject_summary_requested.disconnect(self._on_inject_summary)
+                    if hasattr(tools_panel, '_renamer_widget'):
+                        rw = tools_panel._renamer_widget
+                        if hasattr(rw, 'start_requested') and hasattr(self, '_on_renamer_start'):
+                            rw.start_requested.disconnect(self._on_renamer_start)
+                        if hasattr(rw, 'pause_requested') and hasattr(self, '_on_renamer_pause'):
+                            rw.pause_requested.disconnect(self._on_renamer_pause)
+                        if hasattr(rw, 'cancel_requested') and hasattr(self, '_on_renamer_cancel'):
+                            rw.cancel_requested.disconnect(self._on_renamer_cancel)
+                        if hasattr(rw, 'undo_requested') and hasattr(self, '_on_renamer_undo'):
+                            rw.undo_requested.disconnect(self._on_renamer_undo)
+                        if hasattr(rw, 'seek_requested'):
+                            rw.seek_requested.disconnect()
+                except (RuntimeError, TypeError) as e:
+                    log_debug(f"Tools panel disconnect failed: {e}")
+
             self._stop_poll_timer()
             self._stop_skills_refresh_timer()
             _SharedSpinnerTimer.shutdown()
@@ -931,6 +999,13 @@ class RikuganPanelCore(QWidget):
             cv.shutdown()
         while self._tab_widget.count():
             w = self._tab_widget.widget(0)
+            # Disconnect signals before removing to prevent dangling references
+            if w and hasattr(w, '_tool_approval_callback'):
+                try:
+                    w.set_tool_approval_callback(None)
+                    w.set_user_answer_callback(None)
+                except (RuntimeError, TypeError) as e:
+                    log_debug(f"Widget disconnect failed: {e}")
             self._tab_widget.removeTab(0)
             if w:
                 w.deleteLater()
@@ -959,8 +1034,12 @@ class RikuganPanelCore(QWidget):
             if runner:
                 runner.agent_loop.submit_user_answer(text)
             return
-        # Queue while the agent is actively running.
-        if self._ctrl.is_agent_running:
+        # Queue while the agent is actively running
+        # Check both controller state and per-tab running state
+        current_tab_id = self._ctrl.active_tab_id
+        is_running = self._tab_agent_running.get(current_tab_id, False)
+        if self._ctrl.is_agent_running or is_running:
+            log_debug(f"Agent is running, queuing message: {text[:50]}...")
             self._ctrl.queue_message(text)
             chat_view.add_queued_message(text)
             return
@@ -978,13 +1057,38 @@ class RikuganPanelCore(QWidget):
     def _on_cancel(self) -> None:
         if self._is_shutdown:
             return
+        log_info("Cancel requested - stopping agent...")
+
+        # Stop the poll timer
+        if self._poll_timer is not None:
+            self._poll_timer.stop()
+
+        # Reset state
         self._pending_answer = False
         self._awaiting_button_approval = False
+
+        # Cancel the controller
         self._ctrl.cancel()
+
         # Remove [queued] widgets from the active chat view
         chat_view = self._active_chat_view()
         if chat_view is not None:
             chat_view.remove_queued_messages()
+
+        # Reset per-tab running state
+        current_tab_id = self._ctrl.active_tab_id
+        self._tab_agent_running[current_tab_id] = False
+
+        # Reset running state and re-enable input
+        if hasattr(self, '_set_running'):
+            self._set_running(False)
+
+        # Re-enable input area
+        if hasattr(self, '_input_area') and self._input_area:
+            self._input_area.set_enabled(True)
+            self._input_area.setFocus()
+
+        log_info("Agent cancelled successfully")
 
     def _on_settings(self) -> None:
         try:
@@ -2237,11 +2341,3 @@ Please make the code as readable and maintainable as possible."""
         if hasattr(self, '_cancel_btn'):
             self._cancel_btn.setVisible(running)
 
-    def _connect_mutation_panel_signals(self) -> None:
-        """Connect mutation panel signals after __init__ completes."""
-        try:
-            if self._mutation_panel is not None and hasattr(self, '_on_undo_requested'):
-                self._mutation_panel.undo_requested.connect(self._on_undo_requested)
-        except (AttributeError, RuntimeError) as e:
-            from ..core.logging import log_debug
-            log_debug(f"Could not connect undo signal: {e}")
