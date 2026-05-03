@@ -1,5 +1,7 @@
 # Rikugan (六眼)
 
+*Forked from [Rikugan](https://github.com/buzzer-re/Rikugan)*
+
 A reverse-engineering agent for **IDA Pro**, **Binary Ninja**, and **VSCode** that integrates a multi-provider LLM directly into your analysis workflow. This project was vibecoded together with my friend, Claude Code.
 
 ![alt text](assets/binja_showcase.png)

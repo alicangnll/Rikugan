@@ -5,9 +5,21 @@ For host capability flags see ``rikugan.core.host``.
 """
 
 from __future__ import annotations
+import json
+from pathlib import Path
 
-PLUGIN_NAME = "Rikugan"
-PLUGIN_VERSION = "1.2.5"
+# Get the directory of this file
+_RIKUGAN_ROOT = Path(__file__).parent.parent
+
+# Read version from update.json
+try:
+    with open(_RIKUGAN_ROOT / "update.json", "r") as f:
+        _update_info = json.load(f)
+        PLUGIN_VERSION = _update_info["version"]
+except (FileNotFoundError, KeyError, json.JSONDecodeError):
+    PLUGIN_VERSION = "1.2.5"  # Fallback version
+
+PLUGIN_NAME = "Rikugan-Fork"
 PLUGIN_HOTKEY = "Ctrl+Shift+I"
 PLUGIN_COMMENT = "Intelligent Reverse-engineering Integrated System"
 
