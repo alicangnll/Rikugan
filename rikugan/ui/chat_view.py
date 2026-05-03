@@ -147,14 +147,14 @@ class ChatView(QScrollArea):
         self._scroll_to_bottom()
 
     def _hide_thinking(self) -> None:
+        # Don't auto-hide thinking anymore - let it persist to show AI's thought process
+        # Only hide when explicitly forced (e.g., when actual text response starts)
         if self._thinking is None:
             return
+        # Optional: Show elapsed time to indicate how long AI has been thinking
         elapsed_ms = (time.monotonic() - self._thinking_shown_at) * 1000
-        if elapsed_ms < _THINKING_MIN_DISPLAY_MS:
-            remaining = int(_THINKING_MIN_DISPLAY_MS - elapsed_ms)
-            self._thinking_hide_timer.start(remaining)
-            return
-        self._force_hide_thinking()
+        # Keep thinking widget visible - don't auto-hide
+        # self._force_hide_thinking()
 
     def _force_hide_thinking(self) -> None:
         if self._thinking is None:
@@ -258,9 +258,13 @@ class ChatView(QScrollArea):
             self._scroll_to_bottom()
 
     def _handle_text_event(self, event: TurnEvent) -> None:
-        self._hide_thinking()
+        # Don't hide thinking - let it persist to show AI's thought process
+        # self._hide_thinking()
         self._reset_tool_run()
         if event.type == TurnEventType.TEXT_DELTA:
+            # Hide thinking only when we start showing actual text response
+            if self._thinking is not None:
+                self._force_hide_thinking()
             if self._current_assistant is None:
                 self._current_assistant = AssistantMessageWidget()
                 self._insert_widget(self._current_assistant)
@@ -274,7 +278,8 @@ class ChatView(QScrollArea):
     def _handle_tool_event(self, event: TurnEvent) -> None:
         etype = event.type
         if etype == TurnEventType.TOOL_CALL_START:
-            self._hide_thinking()
+            # Don't hide thinking - let tool calls appear below it
+            # self._hide_thinking()
             tw = ToolCallWidget(event.tool_name, event.tool_call_id)
             self._tool_widgets[event.tool_call_id] = tw
             self._register_tool_widget(event.tool_name, event.tool_call_id, tw)
@@ -297,7 +302,8 @@ class ChatView(QScrollArea):
                 group.notify_result(event.tool_is_error)
             self._scroll_to_bottom()
         elif etype == TurnEventType.TOOL_APPROVAL_REQUEST:
-            self._hide_thinking()
+            # Don't hide thinking for approval requests either
+            # self._hide_thinking()
             self._reset_tool_run()
             widget = ToolApprovalWidget(
                 event.tool_call_id,

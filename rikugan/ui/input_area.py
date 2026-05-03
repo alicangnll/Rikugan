@@ -150,7 +150,12 @@ class InputArea(QPlainTextEdit):
                 if text and self._enabled:
                     # Plain Python callback — no Shiboken signal dispatch
                     if self._submit_callback:
+                        print(f"[InputArea DEBUG] Submitting text: {text[:50]}...")
+                        print(f"[InputArea DEBUG] Callback: {self._submit_callback}")
                         self._submit_callback(text)
+                        print(f"[InputArea DEBUG] Callback returned")
+                    else:
+                        print(f"[InputArea ERROR] No submit callback set!")
                     self.clear()
         elif event.key() == Qt.Key.Key_Escape:
             if self._cancel_callback:

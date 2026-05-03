@@ -1015,12 +1015,46 @@ class RikuganPanelCore(QWidget):
         self._create_tab(self._ctrl.active_tab_id, "New Chat")
         self._try_restore_session()
 
+    def _set_running(self, running: bool) -> None:
+        # Track running state per tab
+        current_tab_id = self._ctrl.active_tab_id
+        self._tab_agent_running[current_tab_id] = running
+
+        log_info(f"[DEBUG] _set_running called: running={running}, tab={current_tab_id}, has_cancel_btn={hasattr(self, '_cancel_btn')}")
+
+        # Keep input enabled so users can queue follow-up messages while
+        # running — UNLESS we're waiting for a button-only approval.
+        if hasattr(self, '_input_area'):
+            if self._awaiting_button_approval:
+                self._input_area.set_enabled(False)
+                self._input_area.setPlaceholderText("Use the Approve/Reject buttons above to continue.")
+            else:
+                self._input_area.set_enabled(True)
+                if running:
+                    self._input_area.setPlaceholderText(
+                        "Rikugan is thinking... press Enter (or Queue) to queue a follow-up."
+                    )
+                else:
+                    self._input_area.setPlaceholderText("Ask about this binary... (/ for skills, /modify to patch)")
+
+        # Update buttons (if they exist)
+        if hasattr(self, '_send_btn'):
+            self._send_btn.setVisible(True)
+            self._send_btn.setEnabled(not self._awaiting_button_approval)
+            self._send_btn.setText("Queue" if running else "Send")
+        if hasattr(self, '_cancel_btn'):
+            self._cancel_btn.setVisible(running)
+            log_info(f"[DEBUG] _cancel_btn visibility set to: {running}, visible={self._cancel_btn.isVisible()}")
+
     def _on_submit(self, text: str) -> None:
         if not text or self._is_shutdown:
             return
         chat_view = self._active_chat_view()
         if chat_view is None:
             return
+
+        log_info(f"[DEBUG] _on_submit called: text={text[:50]}..., has_cancel_btn={hasattr(self, '_cancel_btn')}")
+
         # Block free-text when awaiting button-only approval (plan/save).
         if self._awaiting_button_approval:
             log_debug(f"Ignoring text input while awaiting button approval: {text!r}")
@@ -1028,8 +1062,7 @@ class RikuganPanelCore(QWidget):
         if self._pending_answer:
             self._pending_answer = False
             chat_view.add_user_message(text)
-            if hasattr(self, '_set_running'):
-                self._set_running(True)
+            self._set_running(True)
             runner = self._ctrl.get_runner()
             if runner:
                 runner.agent_loop.submit_user_answer(text)
@@ -1042,11 +1075,23 @@ class RikuganPanelCore(QWidget):
             log_debug(f"Agent is running, queuing message: {text[:50]}...")
             self._ctrl.queue_message(text)
             chat_view.add_queued_message(text)
+            # Ensure Stop button is visible even when queuing
+            self._set_running(True)
             return
-        if hasattr(self, '_start_agent'):
-            self._start_agent(text)
+        # Start new agent - show Stop button immediately
+        log_info(f"[DEBUG] Starting new agent")
+        self._set_running(True)
+        self._start_agent(text)
+
+    def _force_show_cancel_button(self) -> None:
+        """Debug method to force show the cancel button."""
+        if hasattr(self, '_cancel_btn'):
+            log_info(f"[DEBUG] Force showing cancel button, current visibility: {self._cancel_btn.isVisible()}")
+            self._cancel_btn.setVisible(True)
+            self._cancel_btn.raise_()  # Bring to front
+            log_info(f"[DEBUG] After force show, visibility: {self._cancel_btn.isVisible()}")
         else:
-            log_error("_start_agent method not found, cannot submit message")
+            log_info("[DEBUG] _cancel_btn does not exist!")
 
     def _on_send_clicked(self) -> None:
         text = self._input_area.toPlainText().strip()
@@ -1059,15 +1104,7 @@ class RikuganPanelCore(QWidget):
             return
         log_info("Cancel requested - stopping agent...")
 
-        # Stop the poll timer
-        if self._poll_timer is not None:
-            self._poll_timer.stop()
-
-        # Reset state
-        self._pending_answer = False
-        self._awaiting_button_approval = False
-
-        # Cancel the controller
+        # Cancel the controller - this will stop the agent
         self._ctrl.cancel()
 
         # Remove [queued] widgets from the active chat view
@@ -1075,20 +1112,22 @@ class RikuganPanelCore(QWidget):
         if chat_view is not None:
             chat_view.remove_queued_messages()
 
-        # Reset per-tab running state
-        current_tab_id = self._ctrl.active_tab_id
-        self._tab_agent_running[current_tab_id] = False
+        # Reset state
+        self._pending_answer = False
+        self._awaiting_button_approval = False
 
-        # Reset running state and re-enable input
-        if hasattr(self, '_set_running'):
-            self._set_running(False)
-
-        # Re-enable input area
+        # Re-enable input area immediately
         if hasattr(self, '_input_area') and self._input_area:
             self._input_area.set_enabled(True)
+            self._input_area.setPlaceholderText("Ask about this binary... (/ for skills, /modify to patch)")
             self._input_area.setFocus()
 
-        log_info("Agent cancelled successfully")
+        # Update button text back to "Send"
+        # Note: Stop button will be hidden when _on_agent_finished is called
+        if hasattr(self, '_send_btn'):
+            self._send_btn.setText("Send")
+
+        log_info("Agent cancel requested")
 
     def _on_settings(self) -> None:
         try:
@@ -1170,15 +1209,22 @@ class RikuganPanelCore(QWidget):
         if chat_view is None:
             return
         chat_view.add_user_message(user_message)
-        if hasattr(self, '_set_running'):
-            self._set_running(True)
 
         # Update tab label after first user message
         self._update_tab_label(self._ctrl.active_tab_id)
 
+        # Set per-tab running state and update UI BEFORE starting the agent
+        current_tab_id = self._ctrl.active_tab_id
+        self._tab_agent_running[current_tab_id] = True
+
+        if hasattr(self, '_set_running'):
+            self._set_running(True)
+
         error = self._ctrl.start_agent(user_message)
         if error:
             chat_view.add_error_message(error)
+            # Reset per-tab running state on error
+            self._tab_agent_running[current_tab_id] = False
             if hasattr(self, '_set_running'):
                 self._set_running(False)
             return
@@ -1224,15 +1270,14 @@ class RikuganPanelCore(QWidget):
         chat_view = self._active_chat_view()
 
         # If no active chat view exists for the current tab, buffer the event
+        current_tab_id = self._ctrl.active_tab_id
         if chat_view is None:
-            current_tab_id = self._ctrl.active_tab_id
             if current_tab_id not in self._tab_event_buffers:
                 self._tab_event_buffers[current_tab_id] = []
             self._tab_event_buffers[current_tab_id].append(event)
             return
 
         # Process any buffered events for this tab first (from previous tab switches)
-        current_tab_id = self._ctrl.active_tab_id
         if current_tab_id in self._tab_event_buffers and self._tab_event_buffers[current_tab_id]:
             for buffered_event in self._tab_event_buffers[current_tab_id]:
                 if not self._is_shutdown:
@@ -1242,6 +1287,17 @@ class RikuganPanelCore(QWidget):
 
         # Handle the current event
         chat_view.handle_event(event)
+
+        # Cache C code from translation results
+        if event.type == TurnEventType.TEXT_DONE and hasattr(self, '_current_translation_addr'):
+            c_code = self._extract_c_code_from_response(event.text or "")
+            if c_code:
+                self._cache_translation(self._current_translation_addr, c_code)
+                log_info(f"Cached C code translation for {getattr(self, '_current_translation_name', 'unknown')}")
+                # Clear translation state
+                delattr(self, '_current_translation_addr')
+                if hasattr(self, '_current_translation_name'):
+                    delattr(self, '_current_translation_name')
 
         if event.usage:
             # Use prompt_tokens from the event directly — session hasn't
@@ -1272,6 +1328,31 @@ class RikuganPanelCore(QWidget):
                 self._set_running(False)
         if event.type == TurnEventType.MUTATION_RECORDED:
             self._on_mutation_recorded(event)
+
+    def _extract_c_code_from_response(self, text: str) -> str | None:
+        """Extract C code from markdown code blocks in AI response."""
+        import re
+
+        # Look for ```c ... ``` or ```cpp ... ``` code blocks
+        pattern = r'```(?:c|cpp)\n(.*?)\n```'
+        matches = re.findall(pattern, text, re.DOTALL)
+
+        if matches:
+            # Return the first (usually largest) C code block
+            return matches[0].strip()
+
+        # If no C blocks found, look for any code block
+        pattern = r'```\n(.*?)\n```'
+        matches = re.findall(pattern, text, re.DOTALL)
+
+        if matches:
+            # Check if it looks like C code
+            code = matches[0].strip()
+            c_indicators = ['void', 'int', 'char', 'struct', 'typedef', '#include', '{', '}']
+            if any(indicator in code for indicator in c_indicators):
+                return code
+
+        return None
 
     def _on_tool_approval(self, tool_call_id: str, decision: str) -> None:
         """Forward tool approval to the agent loop."""
@@ -1305,11 +1386,17 @@ class RikuganPanelCore(QWidget):
         self._pending_answer = False
         self._awaiting_button_approval = False
 
+        # Reset per-tab running state for current tab
+        current_tab_id = self._ctrl.active_tab_id
+        self._tab_agent_running[current_tab_id] = False
+
         self._ctrl.on_agent_finished()
         # Remove any [queued] widgets since the queue was cleared.
         chat_view = self._active_chat_view()
         if chat_view is not None:
             chat_view.remove_queued_messages()
+
+        # Update UI state to reflect agent is finished
         if hasattr(self, '_set_running'):
             self._set_running(False)
 
@@ -1866,9 +1953,95 @@ class RikuganPanelCore(QWidget):
         if data:
             func_name, func_addr = data
 
-            # Create and show translation dialog
-            dialog = FunctionTranslationDialog(func_name, func_addr, self)
-            dialog.exec()
+            # Check if we have a cached translation
+            cached_code = self._get_cached_translation(func_addr)
+            if cached_code:
+                # Show dialog with cached result
+                dialog = FunctionTranslationDialog(func_name, func_addr, self)
+                dialog.show_cached_result(cached_code)
+                dialog.exec()
+            else:
+                # No cache - redirect to chat tab for new translation
+                prompt = f"""Please translate this function to clean, readable C code with proper variable names and comments:
+
+Function: {func_name}
+Address: 0x{func_addr:X}
+
+First, decompile this function and analyze its logic. Then provide:
+1. A high-level summary of what the function does
+2. Step-by-step analysis of the code logic
+3. Clean C code equivalent with:
+   - Proper variable names (not var1, var2, etc.)
+   - Helpful comments explaining the logic
+   - Standard C syntax and conventions
+   - Any necessary type definitions
+
+Please make the code as readable and maintainable as possible."""
+
+                # Switch to Chat tab (mode index 0)
+                self._mode_bar.setCurrentIndex(0)
+
+                # Store the current function address for caching the result later
+                self._current_translation_addr = func_addr
+                self._current_translation_name = func_name
+
+                # Submit the prompt in the next event loop tick to ensure
+                # the tab switch is complete and UI is ready
+                QTimer.singleShot(0, lambda: self._submit_translation_prompt(prompt))
+
+    def _submit_translation_prompt(self, prompt: str) -> None:
+        """Submit a translation prompt to the chat."""
+        # Set the prompt and submit
+        self._input_area.setPlainText(prompt)
+        self._input_area.clear()
+        self._on_submit(prompt)
+
+    def _get_cached_translation(self, func_addr) -> str | None:
+        """Retrieve cached translation for a function from IDA database."""
+        try:
+            import idaapi
+            import idc
+
+            # Try to get cached translation from function comment
+            # Format: [RIKUGAN_CACHE]\n{code}
+            func_comment = idc.get_func_cmt(func_addr, 0) or ""
+            if "[RIKUGAN_CACHE]" in func_comment:
+                # Extract the cached code
+                parts = func_comment.split("[RIKUGAN_CACHE]", 1)
+                if len(parts) > 1:
+                    cached_code = parts[1].strip()
+                    log_info(f"Found cached translation for 0x{func_addr:X}")
+                    return cached_code
+
+            return None
+        except Exception as e:
+            log_debug(f"Error retrieving cached translation: {e}")
+            return None
+
+    def _cache_translation(self, func_addr, code: str) -> None:
+        """Cache translation result in IDA function comment."""
+        try:
+            import idaapi
+            import idc
+
+            # Store in function comment with special marker
+            existing_comment = idc.get_func_cmt(func_addr, 0) or ""
+            cached_marker = f"[RIKUGAN_CACHE]\n{code}"
+
+            # Append or replace existing cache
+            if "[RIKUGAN_CACHE]" in existing_comment:
+                # Replace existing cache
+                parts = existing_comment.split("[RIKUGAN_CACHE]", 1)
+                new_comment = parts[0] + cached_marker
+            else:
+                # Append cache to existing comment
+                separator = "\n\n" if existing_comment else ""
+                new_comment = existing_comment + separator + cached_marker
+
+            idc.set_func_cmt(func_addr, new_comment, 0)
+            log_info(f"Cached translation for 0x{func_addr:X}")
+        except Exception as e:
+            log_error(f"Error caching translation: {e}")
 
 
 class FunctionTranslationDialog(QDialog):
@@ -1986,6 +2159,67 @@ Please make the code as readable and maintainable as possible."""
         self._result_text.setPlainText(text)
         self._progress_label.setText("Translation complete!")
         self._progress_label.setStyleSheet("color: #4ec9b0; font-size: 12px;")
+
+    def show_cached_result(self, cached_code: str) -> None:
+        """Show a cached translation result in the dialog."""
+        self._result_text.setPlainText(cached_code)
+        self._progress_label.setText("Cached translation (from previous request)")
+        self._progress_label.setStyleSheet("color: #4ec9b0; font-size: 12px;")
+
+        # Add a "Regenerate" button to get a fresh translation
+        if hasattr(self, '_regenerate_btn'):
+            return  # Already added
+
+        buttons_layout = self.layout().itemAt(self.layout().count() - 1).layout()
+
+        self._regenerate_btn = QPushButton("Regenerate")
+        self._regenerate_btn.setStyleSheet(
+            "QPushButton {"
+            "background: #2d4a6e; "
+            "color: #9cdcfe; "
+            "border: 1px solid #4a7ab5; "
+            "border-radius: 4px; "
+            "padding: 6px 12px;"
+            "}"
+            "QPushButton:hover {"
+            "background: #3a5a8a;"
+            "}"
+        )
+        self._regenerate_btn.clicked.connect(self._regenerate_translation)
+        buttons_layout.insertWidget(0, self._regenerate_btn)
+
+    def _regenerate_translation(self) -> None:
+        """Close dialog and redirect to chat for fresh translation."""
+        self.accept()
+
+        # Switch to Chat tab and submit new translation request
+        prompt = f"""Please translate this function to clean, readable C code with proper variable names and comments:
+
+Function: {self._func_name}
+Address: 0x{self._func_addr:X}
+
+First, decompile this function and analyze its logic. Then provide:
+1. A high-level summary of what the function does
+2. Step-by-step analysis of the code logic
+3. Clean C code equivalent with:
+   - Proper variable names (not var1, var2, etc.)
+   - Helpful comments explaining the logic
+   - Standard C syntax and conventions
+   - Any necessary type definitions
+
+Please make the code as readable and maintainable as possible."""
+
+        # Switch to Chat tab (mode index 0)
+        self._panel_core._mode_bar.setCurrentIndex(0)
+
+        # Submit the prompt
+        self._panel_core._input_area.setPlainText(prompt)
+        self._panel_core._input_area.clear()
+        self._panel_core._on_submit(prompt)
+
+        # Store the current function address for caching the result later
+        self._panel_core._current_translation_addr = self._func_addr
+        self._panel_core._current_translation_name = self._func_name
 
     def _copy_to_clipboard(self) -> None:
         """Copy result to clipboard."""
@@ -2221,32 +2455,4 @@ Please make the code as readable and maintainable as possible."""
             return
         # Submit /undo command through the normal agent path
         self._start_agent(f"/undo {count}")
-
-    def _set_running(self, running: bool) -> None:
-        # Track running state per tab
-        current_tab_id = self._ctrl.active_tab_id
-        self._tab_agent_running[current_tab_id] = running
-
-        # Keep input enabled so users can queue follow-up messages while
-        # running — UNLESS we're waiting for a button-only approval.
-        if hasattr(self, '_input_area'):
-            if self._awaiting_button_approval:
-                self._input_area.set_enabled(False)
-                self._input_area.setPlaceholderText("Use the Approve/Reject buttons above to continue.")
-            else:
-                self._input_area.set_enabled(True)
-                if running:
-                    self._input_area.setPlaceholderText(
-                        "Rikugan is thinking... press Enter (or Queue) to queue a follow-up."
-                    )
-                else:
-                    self._input_area.setPlaceholderText("Ask about this binary... (/ for skills, /modify to patch)")
-
-        # Update buttons (if they exist)
-        if hasattr(self, '_send_btn'):
-            self._send_btn.setVisible(True)
-            self._send_btn.setEnabled(not self._awaiting_button_approval)
-            self._send_btn.setText("Queue" if running else "Send")
-        if hasattr(self, '_cancel_btn'):
-            self._cancel_btn.setVisible(running)
 
