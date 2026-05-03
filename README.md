@@ -74,6 +74,38 @@ irm https://raw.githubusercontent.com/alicangnll/Rikugan/main/install.ps1 | iex
 
 For host-specific install, manual setup, and configuration, see the [docs](https://rikugan.reversing.codes/docs.html).
 
+## Uninstall
+
+**Linux / macOS:**
+```bash
+# From the repository
+./uninstall.sh
+
+# Or download and run directly
+curl -fsSL https://raw.githubusercontent.com/alicangnll/Rikugan/main/uninstall.sh | bash
+```
+
+**Uninstall Options:**
+```bash
+# Uninstall from all hosts (default)
+./uninstall.sh
+
+# Uninstall from IDA Pro only
+./uninstall.sh --ida
+
+# Uninstall from Binary Ninja only
+./uninstall.sh --binja
+
+# Uninstall but keep Python dependencies
+./uninstall.sh --keep-deps
+
+# Uninstall without confirmation prompts
+./uninstall.sh --force
+```
+
+**Windows:**
+Manual removal required - delete plugin files from IDA/Binary Ninja plugins directories and remove configuration folders.
+
 ## Is this another MCP client?
 
 No, Rikugan is an ***agent*** built to live inside your RE host. It does not consume an MCP server to interact with the host database; it has its own agentic loop, context management, role prompt ([source](rikugan/agent/system_prompt.py)), and an in-process tool orchestration layer.
