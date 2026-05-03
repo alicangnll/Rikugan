@@ -83,13 +83,15 @@ detect_ida() {
 }
 
 detect_binja() {
+    # Check for Binary Ninja APPLICATION first, not just user directories
     if [[ "$(uname)" == "Darwin" ]]; then
-        [[ -d "$HOME/Library/Application Support/Binary Ninja" ]] && return 0
-        [[ -d "$HOME/.binaryninja" ]] && return 0
         [[ -d "/Applications/Binary Ninja.app" ]] && return 0
         [[ -d "$HOME/Applications/Binary Ninja.app" ]] && return 0
     else
         [[ -d "$HOME/.binaryninja" ]] && return 0
+        [[ -d "/opt/binaryninja" ]] && return 0
+        [[ -d "/usr/local/binaryninja" ]] && return 0
+        [[ -d "$HOME/binaryninja" ]] && return 0
     fi
     return 1
 }
