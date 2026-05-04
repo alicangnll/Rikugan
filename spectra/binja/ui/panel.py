@@ -30,9 +30,6 @@ class SpectraPanel(QWidget):
             layout.setContentsMargins(0, 0, 0, 0)
         if layout.indexOf(self) < 0:
             layout.addWidget(self)
-        # Auto-populate function list when panel first mounts
-        if self._core is not None:
-            self._core.prefill_input("List all functions in this binary", auto_submit=True)
 
     def prefill_input(self, text: str, auto_submit: bool = False) -> None:
         if self._core is not None:

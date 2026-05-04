@@ -58,9 +58,6 @@ class SpectraPanel(idaapi.PluginForm):
             "Spectra",
             options=(idaapi.PluginForm.WOPN_TAB | idaapi.PluginForm.WOPN_PERSIST),
         )
-        # Auto-populate function list when panel first opens
-        if result and self._core is not None:
-            self._core.prefill_input("List all functions in this binary", auto_submit=True)
         return result
 
     def close(self):
