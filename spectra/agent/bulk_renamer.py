@@ -503,6 +503,17 @@ class BulkRenamerEngine:
                 log_error(f"Quick analysis batch {num} failed: {e}")
                 self._update_mgr_agent(agent_id, "failed", str(e), 1)
 
+            # Always update progress after each batch completes (success or failure)
+            with lock:
+                completed_count += len(sub_jobs)
+            self._event_queue.put(
+                RenameEvent(
+                    type=RenameEventType.BATCH_PROGRESS,
+                    completed=completed_count,
+                    total=total,
+                )
+            )
+
             with lock:
                 completed_count += len(sub_jobs)
             self._event_queue.put(
