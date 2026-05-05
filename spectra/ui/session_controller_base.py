@@ -72,7 +72,7 @@ class SessionControllerBase:
 
         # Per-tab agent runners - each tab can run its own agent independently
         self._runners: dict[str, BackgroundAgentRunner] = {}
-        self._pending_messages: list[str] = []
+        self._pending_messages: dict[str, list[str]] = {}
 
     def _initialize_runtime(self) -> None:
         """Load heavy runtime components off the UI path."""
@@ -167,11 +167,15 @@ class SessionControllerBase:
             db_instance_id=self._db_instance_id,
         )
         self._sessions[tab_id] = session
+        # Initialize empty message queue for this tab
+        self._pending_messages[tab_id] = []
         return tab_id
 
     def create_tab(self) -> str:
         """Create a new tab with a fresh session. Returns tab_id."""
         tab_id = self._create_session()
+        # Initialize empty message queue for this tab
+        self._pending_messages[tab_id] = []
         log_info(f"Created new tab {tab_id}")
         return tab_id
 
@@ -194,6 +198,8 @@ class SessionControllerBase:
         forked.metadata = dict(source.metadata)
         forked.metadata["forked_from"] = source.id
         self._sessions[new_tab_id] = forked
+        # Initialize empty message queue for the forked tab
+        self._pending_messages[new_tab_id] = []
         log_info(f"Forked session {source.id} → new tab {new_tab_id}")
         return new_tab_id
 
@@ -213,16 +219,25 @@ class SessionControllerBase:
             runner.cancel()
         log_debug(f"Closed tab {tab_id} (not persisted)")
 
-    def switch_tab(self, tab_id: str) -> None:
-        """Switch active tab. No longer cancels running agent - each tab runs independently."""
+        # If we closed the active tab, switch to another available tab
+        if tab_id == self._active_tab_id and self._sessions:
+            # Switch to the first available tab
+            self._active_tab_id = list(self._sessions.keys())[0]
+            log_debug(f"Auto-switched to tab {self._active_tab_id} after closing active tab")
+
+    def switch_tab(self, tab_id: str) -> bool:
+        """Switch active tab. Returns True if successful, False otherwise.
+        No longer cancels running agent - each tab runs independently."""
         if tab_id == self._active_tab_id:
-            return
+            return True
         if tab_id not in self._sessions:
-            return
+            log_error(f"Cannot switch to tab {tab_id}: not found in sessions")
+            return False
         # Note: We NO LONGER cancel the agent when switching tabs
         # Each tab maintains its own agent runner independently
         self._active_tab_id = tab_id
         log_debug(f"Switched to tab {tab_id}")
+        return True
 
     def tab_label(self, tab_id: str) -> str:
         """Return a display label for a tab."""
@@ -245,6 +260,10 @@ class SessionControllerBase:
 
     @property
     def session(self) -> SessionState:
+        """Get the active tab's session. Raises KeyError if tab not found."""
+        if self._active_tab_id not in self._sessions:
+            log_error(f"Active tab {self._active_tab_id} not found in sessions")
+            raise KeyError(f"Tab {self._active_tab_id} not found in sessions")
         return self._sessions[self._active_tab_id]
 
     def get_session(self, tab_id: str) -> SessionState | None:
@@ -305,6 +324,10 @@ class SessionControllerBase:
             # Delay only the first agent start if background init is still running.
             self._runtime_init_done.wait(timeout=10.0)
 
+        if self._active_tab_id not in self._sessions:
+            log_error(f"Cannot start agent: active tab {self._active_tab_id} not found")
+            return f"Error: Tab {self._active_tab_id} not found"
+
         try:
             provider = self._provider_registry.get_or_create(
                 self.config.provider.name,
@@ -339,14 +362,17 @@ class SessionControllerBase:
 
     def cancel(self) -> None:
         """Cancel the agent for the current tab."""
-        self._pending_messages.clear()
+        self._pending_messages.pop(self._active_tab_id, None)
         runner = self._runners.get(self._active_tab_id)
         if runner:
             runner.cancel()
 
     def queue_message(self, text: str) -> None:
-        self._pending_messages.append(text)
-        log_debug(f"Message queued, {len(self._pending_messages)} pending")
+        if self._active_tab_id not in self._pending_messages:
+            self._pending_messages[self._active_tab_id] = []
+        self._pending_messages[self._active_tab_id].append(text)
+        pending_count = len(self._pending_messages[self._active_tab_id])
+        log_debug(f"Message queued for tab {self._active_tab_id}, {pending_count} pending")
 
     def on_agent_finished(self) -> None:
         """Clean up the runner for the current tab when agent finishes."""
@@ -356,7 +382,7 @@ class SessionControllerBase:
             pass
         # Discard queued messages — context may have changed (error, cancel,
         # model switch).  The user can re-send if still relevant.
-        self._pending_messages.clear()
+        self._pending_messages.pop(self._active_tab_id, None)
 
         # Re-persist the instance ID in the database.  For BN the BNDB may
         # not have existed at init time; writing again ensures the ID is
@@ -374,7 +400,7 @@ class SessionControllerBase:
 
     def new_chat(self) -> None:
         """Reset the active tab to a fresh session."""
-        self._pending_messages.clear()
+        self._pending_messages.pop(self._active_tab_id, None)
         session = self._sessions.get(self._active_tab_id)
         if session and self.config.checkpoint_auto_save and session.messages:
             try:
@@ -430,6 +456,7 @@ class SessionControllerBase:
                 except (OSError, ValueError) as e:
                     log_error(f"Failed to save session {tab_id} on file change: {e}")
         self._sessions.clear()
+        self._pending_messages.clear()
         self._idb_path = _normalize_db_path(new_idb_path)
         self._db_instance_id = self._ensure_db_instance_id()
         tab_id = self._create_session()

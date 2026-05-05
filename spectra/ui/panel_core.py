@@ -644,7 +644,8 @@ class SpectraPanelCore(QWidget):
             # "yes" — fall through to create a new tab
         tab_id = self._ctrl.create_tab()
         self._create_tab(tab_id, "New Chat")
-        self._ctrl.switch_tab(tab_id)
+        if not self._ctrl.switch_tab(tab_id):
+            log_error(f"Failed to switch to newly created tab {tab_id}")
 
     def _on_fork_tab(self, index: int) -> None:
         """Fork (duplicate) a session into a new tab."""
@@ -660,7 +661,8 @@ class SpectraPanelCore(QWidget):
         source_session = self._ctrl.get_session(new_tab_id)
         if source_session and source_session.messages:
             chat_view.restore_from_messages(source_session.messages)
-        self._ctrl.switch_tab(new_tab_id)
+        if not self._ctrl.switch_tab(new_tab_id):
+            log_error(f"Failed to switch to forked tab {new_tab_id}")
         log_info(f"Forked tab {source_tab_id} → {new_tab_id}")
 
     def _on_close_tab(self, index: int) -> None:
